@@ -1,0 +1,7 @@
+halo2/target/
+__pycache__/
+*.pyc
+.pytest_cache/
+experiments/phase1b/raw/*_k13.json
+experiments/phase1b/raw/*_k14.json
+experiments/phase1b/raw/*_k15.json
