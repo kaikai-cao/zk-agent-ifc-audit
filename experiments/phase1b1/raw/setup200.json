@@ -1,0 +1,15 @@
+{
+  "cap": 200,
+  "circuit_version": "phase1b1-fixed-crossbar-blind-v1",
+  "edge_cap": 400,
+  "k": 19,
+  "note": "halo2_proofs 0.4 exposes no VK serialization API; verifier rebuilds the graph-independent fixed-template VK and pins it via vk_hash. This is an explicit deviation from an opaque serialized VK.",
+  "params_gen_ms": 187477,
+  "pk_gen_ms": 61425,
+  "schema": "ifc-fixed-v1",
+  "vk_digest": "22e0d54cf04a960302e4e05a193da2bad529d61a8beb3567436e2cbe9f8b3bfe",
+  "vk_gen_ms": 227937,
+  "vk_hash": "17d13cda97d0083126679408deb6f030cd52435e1e6b6e3a31063377b9be770e",
+  "setup_wall_ms": 477496,
+  "setup_peak_mb": 11833.67
+}

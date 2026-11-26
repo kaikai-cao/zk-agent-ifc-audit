@@ -59,25 +59,25 @@ leaf_edge[j] = Poseidon(DOMAIN_EDGE, src[j], dst[j], dep_kind[j], j)
 
 ### 4.2 Merkle 承诺
 
-把 `leaf_node[*]` 与 `leaf_edge[*]` 顺序放入固定大小叶层，空叶用 `DOMAIN_EMPTY` 编码；逐层 `Hash(DOMAIN_MERGE, left, right)` 得到 `root_G`。Phase 1A 用 Python 复刻同一 Poseidon 参数；Phase 1B 用 halo2_gadgets 的 Pow5Chip（Pallas, P128Pow5T3, width 3, rate 2）。
+把 `leaf_node[*]` 与 `leaf_edge[*]` 顺序放入固定大小叶层，空叶用 `DOMAIN_EMPTY` 编码；逐层 `Hash(DOMAIN_MERGE, left, right)` 得到绑定根 `root_G`；Phase 1B.1 再计算公开承诺 `C = H<3>(DOMAIN_BLIND+cap, root_G, blind)`。Phase 1A 用 Python 复刻同一 Poseidon 参数；Phase 1B 用 halo2_gadgets 的 Pow5Chip（Pallas, P128Pow5T3, width 3, rate 2）。
 
 承诺只绑定编码值与顺序；它不绑定采集器是否观察完整（见 `SECURITY_MODEL.md`）。
 
 ## 5. 公开输入与绑定
 
 ```
-x = (root_G, policy_id, session_id, nonce, collector_id)
+x = (C, policy_id, session_id, nonce, collector_id)
 ```
 
 电路约束：
-- 见证中的 `root_G_witness` 与公开 `root_G` 相等；
+- 见证中的 `root_G` 与 `blind` 在电路内生成 `C`，并与公开 `C` 相等；
 - 见证中的 `policy_id/session_id/nonce/collector_id` 与公开值相等；
 - 这些值参与域分离编码，防止将同一证明用于不同会话/策略/nonce。
 
 采集器签名在电路外验证：
 
 ```
-Sig = Sign(sk_C, encode(root_G, policy_id, session_id, nonce, collector_id))
+Sig = Sign(sk_C, encode(C, policy_id, session_id, nonce, collector_id))
 Verifier: Verify(pk_C, Sig, x) == 1 且 Verify_ZK(x, π) == 1
 ```
 
@@ -88,7 +88,7 @@ Verifier: Verify(pk_C, Sig, x) == 1 且 Verify_ZK(x, π) == 1
 ```
 R(x, w) = 1  iff
   EncodingValid(w.graph, MAX_EVENTS)                     # 类型/标签/索引/数量
-  ∧ MerkleRoot(w.graph_encoding) == x.root_G             # 承诺绑定
+  ∧ H(BLIND+cap, MerkleRoot(w.graph_encoding), w.blind) == x.C  # 盲化承诺绑定
   ∧ BindingFields(w) == (x.policy_id,x.session_id,x.nonce,x.collector_id)
   ∧ ForwardClosureExists(w.graph, w.S)                   # C1–C4
 ```

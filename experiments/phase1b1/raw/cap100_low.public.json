@@ -1,0 +1,17 @@
+{
+  "active_edges": 50,
+  "cap": 100,
+  "circuit_version": "phase1b1-fixed-crossbar-blind-v1",
+  "collector_id": 5785632601077953707,
+  "collector_public_key": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+  "collector_signature": "ada75ca7b2e001be17e12a611005701bc2402e9f21ffebcefd81c02711072809b4e1c033847139b1cc5ff4fa01a9dcb6323459d2c749397ff6843759210b6c0d",
+  "commitment": "1074a1984f7f8efc8322cc307e594e06178306877f8c3f7515cd910e0a3bcce5",
+  "density": "low",
+  "k": 17,
+  "nonce": 12605,
+  "policy_id": 7,
+  "proof_bytes": 8096,
+  "prove_ms": 20552,
+  "schema": "ifc-fixed-v1",
+  "session_id": 20261126
+}

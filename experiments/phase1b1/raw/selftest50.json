@@ -1,0 +1,9 @@
+{
+  "blind_changes_commitment": true,
+  "cap": 50,
+  "compliant_graph_satisfied": true,
+  "invalid_graph_rejected": true,
+  "schema": "ifc-fixed-v1",
+  "vk_graph_independent": true,
+  "wrong_signature_rejected": true
+}

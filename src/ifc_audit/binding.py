@@ -17,7 +17,7 @@ from .poseidon import hash_const_len
 
 @dataclass(frozen=True)
 class BindingContext:
-    root_g: int
+    commitment: int
     policy_id: int
     session_id: int
     nonce: int
@@ -27,7 +27,7 @@ class BindingContext:
         return b"|".join(
             str(v & ((1 << 256) - 1)).encode("ascii")
             for v in (
-                self.root_g,
+                self.commitment,
                 self.policy_id,
                 self.session_id,
                 self.nonce,
@@ -40,7 +40,7 @@ class BindingContext:
         return hash_const_len(
             [
                 DOMAIN_BIND,
-                self.root_g,
+                self.commitment,
                 self.policy_id,
                 self.session_id,
                 self.nonce,

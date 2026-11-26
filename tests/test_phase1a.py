@@ -17,7 +17,15 @@ from ifc_audit.binding import (
     sign_attestation,
     verify_attestation,
 )
-from ifc_audit.encoding import DOMAIN_BIND, encode_graph, poseidon_permutation_check
+from ifc_audit.encoding import (
+    DOMAIN_BIND,
+    DOMAIN_BLIND,
+    FIELD_MODULUS,
+    commit,
+    encode_graph,
+    encode_graph_fixed,
+    poseidon_permutation_check,
+)
 from ifc_audit.model import (
     Edge,
     Graph,
@@ -159,7 +167,7 @@ def test_f_nonce_and_session_mismatch_rejected() -> None:
     key = generate_collector_key()
     cid = collector_id_from_public_key(key.public_key())
     ctx = BindingContext(
-        root_g=12345,
+        commitment=12345,
         policy_id=7,
         session_id=20261126,
         nonce=99,
@@ -176,7 +184,7 @@ def test_f_nonce_and_session_mismatch_rejected() -> None:
     assert ctx.binding_hash() != bad_session.binding_hash()
     # Domain separation value is a fixed Poseidon ConstantLength input.
     assert ctx.binding_hash() == hash_const_len(
-        [DOMAIN_BIND, ctx.root_g, ctx.policy_id, ctx.session_id, ctx.nonce]
+        [DOMAIN_BIND, ctx.commitment, ctx.policy_id, ctx.session_id, ctx.nonce]
     )
 
 
@@ -257,3 +265,48 @@ def test_closure_equals_bfs_dfs_on_random_small_graphs() -> None:
         assert reachable_high_to_low_sink(graph) is (not by_closure)
         assert reachable_high_to_low_sink_dfs(graph) is (not by_closure)
         assert trace_ifc_compliant(graph) is by_closure
+
+
+# ---------------------------------------------------------------------------
+# Phase 1B.1: randomized commitment (hiding vs binding)
+# ---------------------------------------------------------------------------
+def _blind_graph() -> Graph:
+    return Graph(
+        nodes=(
+            n(0, NodeType.CONFIDENTIAL_SOURCE, Label.HIGH),
+            n(1, NodeType.PUBLIC_SINK, Label.LOW),
+        ),
+        edges=(),
+    )
+
+
+def test_commitment_hides_graph_against_enumeration() -> None:
+    graph = _blind_graph()
+    first = encode_graph_fixed(graph, max_events=4, edge_cap=8, blind=12345)
+    second = encode_graph_fixed(graph, max_events=4, edge_cap=8, blind=67890)
+    assert first.root == second.root, "blinding must not change the binding root"
+    assert first.commitment != second.commitment, "different blind must hide linkage"
+    assert first.commitment == commit(first.root, 12345, 4)
+    assert first.blind == 12345
+
+
+def test_commitment_rejects_graph_or_blind_substitution() -> None:
+    graph = _blind_graph()
+    original = encode_graph_fixed(graph, max_events=4, edge_cap=8, blind=12345)
+    changed = Graph(
+        nodes=graph.nodes,
+        edges=(Edge(0, 1, 0),),
+    )
+    remapped = encode_graph_fixed(changed, max_events=4, edge_cap=8, blind=12345)
+    assert remapped.commitment != original.commitment
+    reblinded = encode_graph_fixed(graph, max_events=4, edge_cap=8, blind=12346)
+    assert reblinded.commitment != original.commitment
+
+
+def test_commitment_blind_must_be_canonical_field_element() -> None:
+    graph = _blind_graph()
+    with pytest.raises(ValueError):
+        encode_graph_fixed(graph, max_events=4, edge_cap=8, blind=FIELD_MODULUS)
+    with pytest.raises(ValueError):
+        commit(0, -1, 4)
+    assert DOMAIN_BLIND != DOMAIN_BIND

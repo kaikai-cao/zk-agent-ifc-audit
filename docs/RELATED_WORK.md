@@ -1,8 +1,9 @@
 # 相关工作（Phase 0 必需清单）
 
-核对日期：2026-11-26。证据分级：
+核对日期：2026-11-26（Phase 1B.1 修订）；Distributed Sentinel §4.8.1 于同日按 arXiv HTML 原文重新核对。证据分级：
 - `FULLTEXT`：原文/官方摘要页可读，主张来自原文或官方摘要；
 - `ABSTRACT`：仅摘要/二手解读可读，正文不可得，机制细节标为作者声称；
+- `USER-PROVIDED`：由项目方提供、本轮未独立定位到精确出处，不作为已确认论文；
 - `UNVERIFIED`：未找到精确命名来源，只列可能近邻，不作为已确认重叠。
 
 本项目关系 R 的特征向量（用于比较）：
@@ -16,9 +17,11 @@
 
 ## 2. Distributed Sentinel — Beyond Single-Agent Alignment
 
-- 来源：Wu & Gong, arXiv:2604.22879。`FULLTEXT`
-- 内容：多智能体上下文碎片化违规（CFV）；sidecar + Semantic Taint Token（STT）跨组织传递安全状态，跨域只返回布尔结果；报告 F1=0.95、106ms（作者实验数值）。
-- 与 R 的关系：解决**运行时跨域策略执行与状态同步**，STT 有签名但不提供对隐藏图的公开 ZK 合规证明；不证明承诺根与会话/nonce 绑定。属于执行/防护层，不是本证明关系。
+- 来源：Wu & Gong, arXiv:2604.22879；§4.8.1 `Zero-Knowledge Predicate Proofs` 已按 arXiv HTML 原文核对。`FULLTEXT`
+- 内容（运行时层）：多智能体上下文碎片化违规（CFV）；sidecar + Semantic Taint Token（STT）跨组织传递安全状态；报告 F1=0.95、106ms（作者实验数值）。
+- 内容（ZK 层，此前误记，本版纠正）：§4.8.1 明确让源 sidecar 在**不暴露底层知识图结构**的前提下，向请求方证明策略谓词判定正确；关系写成 `∃w: R(x,w)=b`，其中 `w` 原文定义为 **graph structure**，`b∈{0,1}` 为策略判定；实现用 **Groth16 zk-SNARK**，策略谓词编译为算术电路。Table 3 报告 proof generation 45.2 ms、verification 2.1 ms、proof size 192 B、一次性 circuit setup 3,200 ms（作者实验数值）。
+- 图对象：§2.1 定义每个 agent 持有私有本地知识图 `G_i=(V_i,E_i)`，节点为实体、边为关系/属性（所有权、分类、权限）。它服务于**跨组织策略谓词验证**，不是为 Agent 会话 Trace-IFC 前向闭包设计。
+- 与 R 的关系：Distributed Sentinel **已覆盖“隐藏图 + Groth16 + 外部公开可验证策略谓词”这一通用结构**，原 Phase 0 表述“STT 有签名但不提供对隐藏图的公开 ZK 合规证明”与原文矛盾，已撤销。本项目的可能差异只剩图对象（会话信息流图 vs 跨组织知识图）与谓词（High→Low 前向闭包 vs 通用策略谓词）；这不足以把通用结构宣称为独立密码学贡献。采集器认证根与会话/nonce 绑定仍未被其覆盖，但属于工程语义层，不自动构成非组合式新语句。
 
 ## 3. zk-MCP — Zero-Knowledge Audit for Internet of Agents
 
@@ -44,12 +47,13 @@
 - 内容：无类型按值调用 λ 演算 + 动态 IFC + 对话原语（`@`, `fork`, `clear`）；在 Lean 中机器检验概率/终止不敏感非干扰定理；AgentDojo 银行场景评估。
 - 与 R 的关系：给出**语言层、机器检验的 N1/NI 类保证**，对象是演算与可执行解释器；本项目对象是单次会话图与外部验证，不做语言语义证明。LLMbda 明确 FIDES 忽略控制流，支持我们把控制依赖边纳入图谓词的动机。
 
-## 7. AttnNI — 精确命名未确认（`UNVERIFIED`）
+## 7. AttnNI — 公开 Lean 形式化项目；论文状态未确认（`USER-PROVIDED`）
 
-- 检索结果：未找到名为 `AttnNI` 的精确论文/方法。可核验近邻：
-  - GPR-NIAM / AttnIso, arXiv:2509.22700（NeurIPS'25）：联邦提示学习中用“无干扰注意力掩码/注意力隔离”阻断提示 token 与文本 token 的交互；这是优化/泛化意义上的非干扰，不是 IFC 非干扰。
+- 项目方提供的归类：AttnNI 有**公开 Lean 形式化项目**，其中 `Session.lean` 已涉及**工具交互下的会话级非干扰性**。本轮检索未独立定位到同名论文或该仓库的精确 URL，因此不把“已发表论文”写入已确认事实。
+- 可核验近邻（注意力隔离/注入检测，非形式化 IFC）：
+  - GPR-NIAM / AttnIso, arXiv:2509.22700（NeurIPS'25）：联邦提示学习中用“无干扰注意力掩码/注意力隔离”阻断提示 token 与文本 token 的交互；这是优化/泛化意义上的非干扰。
   - RENNERVATE（NDSS 2026，二手解读可读）：用 response→context attention 特征定位并删除间接提示注入 token；不是形式化 IFC 证明。
-- 结论：`AttnNI` 不能作为已确认重叠写入 novelty 主张。若用户后续给出精确出处，再按原文核对；在本 Phase 0 中只按“注意力隔离/检测近邻”记录。
+- 结论：按“已公开 Lean 形式化项目（会话级 NI、含工具交互），论文状态未确认”记录，替代原“精确来源未确认”的笼统表述。它提示：**会话级非干扰的机器检验形式化已有公开实现**，本项目不得把“会话级 NI 形式化”当作空白；但仍不构成本项目 ZK 关系的直接重叠。
 
 ## 8. Cheesecloth — Zero-Knowledge Proofs of Real-World Vulnerabilities
 
@@ -73,10 +77,13 @@
 
 已覆盖：
 - ZK 隐藏执行/通信证据（ZEKRA、zk-MCP、Cheesecloth）；
+- **隐藏图 + Groth16 + 外部公开可验证策略谓词（Distributed Sentinel §4.8.1）**；
 - Agent IFC 执行期强制（FIDES、SME、LLMbda、Pave）；
-- 多 Agent 跨域污点传播（Distributed Sentinel）；
-- 明文轨迹信息流审计（NeuroTaint）。
+- 多 Agent 跨域污点传播（Distributed Sentinel 运行时层）；
+- 明文轨迹信息流审计（NeuroTaint）；
+- 会话级非干扰的公开 Lean 形式化（AttnNI，论文状态未确认）。
 
-未观察到单一工作同时具备：`Agent Grant/session/nonce 绑定 + 隐藏会话流图承诺 + 外部公开可验证的 Trace-IFC 前向闭包结果 + 采集器认证根`。
+因此：**“对隐藏图生成 ZK 证明并由外部验证策略谓词”这一通用结构不是本项目创新点**。尚未观察到单一工作同时具备的组合是：
+`Agent Grant/session/nonce 绑定 + 隐藏会话流图承诺 + 外部公开可验证的 Trace-IFC 前向闭包结果 + 采集器认证根 + 盲化隐藏承诺`。
 
-这是**待验证空白**，不是 novelty 定论。若 Phase 1B 的成本不可接受，或关系退化为通用图谓词直接套用，按 `DECISION_GATE.md` 停止条件 3/4/5 处理。
+这仍只是**特征组合层面的待验证空白**，不是 novelty 定论。当前仓库不宣称相对 Distributed Sentinel / Cheesecloth / zk-MCP / FIDES 形成非组合式新增安全语句；按 `DECISION_GATE.md` 停止条件 3/5 保持 HOLD。若后续要提出研究贡献，须先证明该组合带来新的可证性质，而非字段增加或组件拼接。

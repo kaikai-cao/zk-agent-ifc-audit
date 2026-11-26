@@ -6,12 +6,13 @@ edition = "2021"
 [dependencies]
 ff = "0.14"
 group = "0.14"
-halo2_proofs = { version = "=0.4.0", default-features = false, features = ["batch", "floor-planner-v1-legacy-pdqsort"] }
+halo2_proofs = { version = "=0.4.0", default-features = false, features = ["batch", "multicore", "floor-planner-v1-legacy-pdqsort"] }
 halo2_gadgets = { version = "=0.6.0", default-features = false }
 halo2_poseidon = "=0.2.0"
 pasta_curves = { version = "=0.6.0", features = ["glv"] }
 rand = { version = "0.10", features = ["sys_rng", "std_rng"] }
 serde_json = "1"
+sha2 = "0.10"
 ed25519-dalek = { version = "=2.1.1", default-features = false, features = ["rand_core"] }
 
 [profile.release]

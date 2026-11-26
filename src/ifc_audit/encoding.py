@@ -1,13 +1,20 @@
-"""Canonical fixed-capacity graph encoding and Poseidon Merkle commitment.
+"""Canonical fixed-capacity graph encoding and Poseidon commitment.
 
-This is the host reference for the Phase 1B circuit.  The same domain tags,
+This is the host reference for the Phase 1B/1B.1 circuit.  The same domain tags,
 leaf widths and Merkle shape are implemented in `halo2/src/main.rs`.
+
+Phase 1B.1 separates two notions:
+
+* `root` is the binding-only Merkle root of the fixed-size encoding;
+* `commitment = H(DOMAIN_BLIND + cap, root, blind)` is the *randomized* public
+  commitment.  `blind` is a secret field element sampled per session.
 
 Encoding (all Poseidon P128Pow5T3, width 3 / rate 2):
   node_leaf(i) = H<3>(DOMAIN_NODE + cap, type_i*2 + label_i, i)
   edge_leaf(j) = H<3>(DOMAIN_EDGE + cap, src_j*cap + dst_j, kind_j)
   empty_leaf   = H<2>(DOMAIN_EMPTY + cap, 0)
   merge(a,b)   = H<2>(a, b)
+  commitment   = H<3>(DOMAIN_BLIND + cap, root, blind)
 
 `cap` is MAX_NODES.  Nodes are padded to `max_events` with PUBLIC_SOURCE /
 LOW / S=0; edges are padded to `max_edges` with EMPTY leaves.
@@ -25,6 +32,9 @@ DOMAIN_EDGE = 0x45444745
 DOMAIN_EMPTY = 0x454D5054
 DOMAIN_MERGE = 0x4D455247
 DOMAIN_BIND = 0x42494E44
+DOMAIN_BLIND = 0x424C494E
+
+FIELD_MODULUS = 0x40000000000000000000000000000000224698FC094CF91B992D30ED00000001
 
 
 @dataclass(frozen=True)
@@ -34,6 +44,8 @@ class GraphEncoding:
     depth: int
     root: int
     leaf_count: int
+    blind: int
+    commitment: int
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -42,6 +54,8 @@ class GraphEncoding:
             "depth": self.depth,
             "leaf_count": self.leaf_count,
             "root": hex(self.root),
+            "blind": hex(self.blind),
+            "commitment": hex(self.commitment),
         }
 
 
@@ -63,6 +77,13 @@ def merge(left: int, right: int) -> int:
     return hash_const_len([left, right])
 
 
+def commit(root: int, blind: int, cap: int) -> int:
+    """Randomized commitment; `blind` must be in-field and never published."""
+    if not 0 <= blind < FIELD_MODULUS:
+        raise ValueError("blind must be a canonical Pallas base-field element")
+    return hash_const_len([DOMAIN_BLIND + cap, root, blind])
+
+
 def merkle_root(leaves: list[int], cap: int) -> tuple[int, int]:
     if not leaves:
         leaves = [empty_leaf(cap)]
@@ -76,7 +97,17 @@ def merkle_root(leaves: list[int], cap: int) -> tuple[int, int]:
     return layer[0], depth
 
 
-def encode_graph_fixed(graph: Graph, max_events: int, edge_cap: int | None = None) -> GraphEncoding:
+def _finish_encoding(
+    node_leaves: tuple[int, ...], edge_leaves: tuple[int, ...], cap: int, blind: int
+) -> GraphEncoding:
+    leaves = list(node_leaves) + list(edge_leaves)
+    root, depth = merkle_root(leaves, cap)
+    return GraphEncoding(node_leaves, edge_leaves, depth, root, len(leaves), blind, commit(root, blind, cap))
+
+
+def encode_graph_fixed(
+    graph: Graph, max_events: int, edge_cap: int | None = None, blind: int = 0
+) -> GraphEncoding:
     """Fixed-capacity encoding used by the circuit."""
     graph.validate(max_events)
     if edge_cap is None:
@@ -90,10 +121,7 @@ def encode_graph_fixed(graph: Graph, max_events: int, edge_cap: int | None = Non
         raise ValueError(f"edge count {len(edge_leaves_list)} exceeds cap {edge_cap}")
     while len(edge_leaves_list) < edge_cap:
         edge_leaves_list.append(empty_leaf(max_events))
-    edge_leaves = tuple(edge_leaves_list)
-    leaves = list(node_leaves) + list(edge_leaves)
-    root, depth = merkle_root(leaves, max_events)
-    return GraphEncoding(node_leaves, edge_leaves, depth, root, len(leaves))
+    return _finish_encoding(node_leaves, tuple(edge_leaves_list), max_events, blind)
 
 
 def encode_graph(graph: Graph, max_events: int | None = None) -> GraphEncoding:
@@ -101,9 +129,7 @@ def encode_graph(graph: Graph, max_events: int | None = None) -> GraphEncoding:
     graph.validate(max_events)
     node_leaves = tuple(node_leaf(node, i, graph.n) for i, node in enumerate(graph.nodes))
     edge_leaves = tuple(edge_leaf(e.src, e.dst, e.kind, graph.n) for e in graph.edges)
-    leaves = list(node_leaves) + list(edge_leaves)
-    root, depth = merkle_root(leaves, graph.n)
-    return GraphEncoding(node_leaves, edge_leaves, depth, root, len(leaves))
+    return _finish_encoding(node_leaves, edge_leaves, graph.n, 0)
 
 
 def poseidon_permutation_check() -> bool:

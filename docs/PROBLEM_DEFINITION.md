@@ -62,7 +62,7 @@ N3 关心：采集器是否真实、完整、不可绕过地记录了执行。�
 
 本项目的立场：
 
-- 证明关系以 `root_G` 为锚点，证明的是**被承诺的图**合规；
+- 证明关系以盲化承诺 `C=H(BLIND+cap, root_G, blind)` 为锚点，证明的是**被承诺的图**合规；
 - 若采集器漏掉一条 High→Low 边，则“漏记后的图”可能合规，证明依然成立；
 - 因此验证者的信任边界仍包含采集器完整性；ZKP 不消除这一信任，只是使验证者不必信任证明者提供的图内容。
 
@@ -73,14 +73,14 @@ N3 关心：采集器是否真实、完整、不可绕过地记录了执行。�
 ### 4.1 公开输入
 
 ```
-root_G          # 图编码承诺根（Poseidon Merkle root）
+C               # 随机盲化图承诺（Pallas/Poseidon，隐藏 root_G 与 blind）
 policy_id       # 公开策略标识（固定版本）
 session_id      # 会话标识
 nonce           # 验证者 nonce
 collector_id    # 采集器身份/公钥标识
 ```
 
-采集器对 `(root_G, policy_id, session_id, nonce, collector_id)` 的签名由验证者在电路外校验；电路内部只约束这些公开值与见证中的对应字段一致。签名验证信任模型见 `docs/COMMITMENT_AND_PROVENANCE.md`。
+采集器对 `(C, policy_id, session_id, nonce, collector_id)` 的签名由验证者在电路外校验；电路内部计算 `C` 并约束其与公开值一致。`root_G` 与 `blind` 均不公开（Phase 1B.1 修订）。签名验证信任模型见 `docs/COMMITMENT_AND_PROVENANCE.md`。
 
 ### 4.2 见证
 
@@ -90,15 +90,15 @@ w = (nodes, edges, labels, S, encoding_aux, merkle_paths, collector_attestation_
 
 ### 4.3 证明关系 R
 
-给定公开输入 `x=(root_G, policy_id, session_id, nonce, collector_id)`，证明者持有 w，使得：
+给定公开输入 `x=(C, policy_id, session_id, nonce, collector_id)`，证明者持有 w，使得：
 
-1. 图编码与 `root_G` 对应（Merkle/Poseidon 承诺验证）；
+1. 图编码 Merkle 根 `root_G` 与见证中的 `blind` 共同生成公开承诺 `C`（电路内计算并绑定）；
 2. 所有节点、边、标签和数量满足编码格式（类型域、标签域、索引范围、数量上限）；
 3. 所有 High 来源都属于隐藏前向闭合集合 S；
 4. 所有 Low 输出均不属于 S；
 5. S 对图中所有边前向闭合；
 6. 证明绑定当前会话和验证者 nonce（公开输入约束 + 承诺域分离）；
-7. 图承诺根由指定可信采集器认证（验证者验签；电路绑定同一 root）。
+7. 图盲化承诺由指定可信采集器认证（验证者验签；电路绑定同一 `C`）。
 
 `Verify(x, π)=1` 时，验证者只学到：存在满足上述条件的隐藏图。学不到节点内容、边结构、标签分布、S 的具体形状或工具名/参数。
 
