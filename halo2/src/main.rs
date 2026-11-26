@@ -12,6 +12,7 @@
 //!   * the public commitment is randomized: C = H(DOMAIN_BLIND, root_G, blind);
 //!   * setup / prove / verify are separate processes and timings are separated.
 
+use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::fs;
 use std::time::Instant;
@@ -37,7 +38,7 @@ use halo2_proofs::{
     transcript::{Blake2bRead, Blake2bWrite},
 };
 use pasta_curves::{pallas::Base as F, vesta};
-use rand::{rngs::StdRng, RngExt, SeedableRng};
+use rand::{rngs::{StdRng, SysRng}, RngExt, SeedableRng, TryRng};
 use serde_json::{json, Value as JsonValue};
 
 const DOMAIN_NODE: u64 = 0x4E4F_4445;
@@ -54,13 +55,29 @@ const T_TOOL_RESULT: u64 = 4;
 const T_PUBLIC_SINK: u64 = 5;
 
 const SCHEMA: &str = "ifc-fixed-v1";
-const CIRCUIT_VERSION: &str = "phase1b1-fixed-crossbar-blind-v1";
+const CIRCUIT_VERSION: &str = "phase1b1-2-soundness-v1";
 
 #[derive(Clone, Debug)]
 struct GNode { typ: u64, label: u64, s: u64 }
 
 #[derive(Clone, Debug)]
 struct GEdge { src: usize, dst: usize, kind: u64, active: bool }
+
+/// Attacker-controlled assignment overrides used by Phase 1B.1.2 negative tests.
+///
+/// A normal witness always carries `MaliciousOverrides::default()`.  Audit cases
+/// deliberately set fields that used to be unconstrained advice cells.
+#[derive(Clone, Debug, Default)]
+struct MaliciousOverrides {
+    node_tl: Option<Vec<F>>,
+    node_index: Option<Vec<F>>,
+    edge_idx: Option<Vec<F>>,
+    s_src: Option<Vec<F>>,
+    s_dst: Option<Vec<F>>,
+    domains: BTreeMap<&'static str, F>,
+    empty_zero: Option<F>,
+    crossbar_prev: BTreeMap<(usize, usize), [F; 6]>,
+}
 
 #[derive(Clone, Debug)]
 struct Witness {
@@ -74,6 +91,7 @@ struct Witness {
     collector_id: u64,
     /// Random blinding factor; part of the commitment, never public.
     blind: F,
+    malicious: MaliciousOverrides,
 }
 
 fn host_hash<const L: usize>(words: [F; L]) -> F {
@@ -82,22 +100,50 @@ fn host_hash<const L: usize>(words: [F; L]) -> F {
 fn f(value: u64) -> F { F::from(value) }
 fn cap_domain(base: u64, cap: usize) -> F { f(base.wrapping_add(cap as u64)) }
 
-fn node_leaf(node: &GNode, pos: usize, cap: usize) -> F {
-    host_hash::<3>([cap_domain(DOMAIN_NODE, cap), f(node.typ * 2 + node.label), f(pos as u64)])
+fn domain_override(name: &'static str, cap: usize, ov: &MaliciousOverrides) -> F {
+    if let Some(v) = ov.domains.get(name) { return *v; }
+    match name {
+        "node" => cap_domain(DOMAIN_NODE, cap),
+        "edge" => cap_domain(DOMAIN_EDGE, cap),
+        "empty" => cap_domain(DOMAIN_EMPTY, cap),
+        "blind" => cap_domain(DOMAIN_BLIND, cap),
+        _ => panic!("unknown domain name"),
+    }
 }
-fn edge_hash(src: usize, dst: usize, kind: u64, cap: usize) -> F {
-    host_hash::<3>([cap_domain(DOMAIN_EDGE, cap), f(src as u64 * cap as u64 + dst as u64), f(kind)])
+
+fn node_tl_value(node: &GNode, pos: usize, ov: &MaliciousOverrides) -> F {
+    ov.node_tl.as_ref().and_then(|v| v.get(pos)).copied()
+        .unwrap_or_else(|| f(node.typ * 2 + node.label))
 }
-fn empty_leaf(cap: usize) -> F { host_hash::<2>([cap_domain(DOMAIN_EMPTY, cap), F::ZERO]) }
+fn node_pos_value(pos: usize, ov: &MaliciousOverrides) -> F {
+    ov.node_index.as_ref().and_then(|v| v.get(pos)).copied()
+        .unwrap_or_else(|| f(pos as u64))
+}
+fn edge_idx_value(e: &GEdge, j: usize, cap: usize, ov: &MaliciousOverrides) -> F {
+    ov.edge_idx.as_ref().and_then(|v| v.get(j)).copied()
+        .unwrap_or_else(|| f(e.src as u64 * cap as u64 + e.dst as u64))
+}
+
+fn node_leaf(node: &GNode, pos: usize, cap: usize, ov: &MaliciousOverrides) -> F {
+    host_hash::<3>([domain_override("node", cap, ov), node_tl_value(node, pos, ov),
+        node_pos_value(pos, ov)])
+}
+fn edge_hash(e: &GEdge, j: usize, cap: usize, ov: &MaliciousOverrides) -> F {
+    host_hash::<3>([domain_override("edge", cap, ov), edge_idx_value(e, j, cap, ov), f(e.kind)])
+}
+fn empty_leaf(cap: usize, ov: &MaliciousOverrides) -> F {
+    host_hash::<2>([domain_override("empty", cap, ov), ov.empty_zero.unwrap_or(F::ZERO)])
+}
 fn merge_leaf(left: F, right: F) -> F { host_hash::<2>([left, right]) }
 
 fn merkle_root(w: &Witness) -> F {
     let cap = w.cap;
-    let empty = empty_leaf(cap);
+    let ov = &w.malicious;
+    let empty = empty_leaf(cap, ov);
     let mut leaves: Vec<F> = w.nodes.iter().enumerate()
-        .map(|(i, n)| node_leaf(n, i, cap)).collect();
-    for e in &w.edges {
-        leaves.push(if e.active { edge_hash(e.src, e.dst, e.kind, cap) } else { empty });
+        .map(|(i, n)| node_leaf(n, i, cap, ov)).collect();
+    for (j, e) in w.edges.iter().enumerate() {
+        leaves.push(if e.active { edge_hash(e, j, cap, ov) } else { empty });
     }
     while leaves.len() > 1 {
         if leaves.len() % 2 == 1 { leaves.push(empty); }
@@ -108,7 +154,7 @@ fn merkle_root(w: &Witness) -> F {
 
 /// Public randomized commitment: C = H(DOMAIN_BLIND, root_G, blind).
 fn commitment(w: &Witness) -> F {
-    host_hash::<3>([cap_domain(DOMAIN_BLIND, w.cap), merkle_root(w), w.blind])
+    host_hash::<3>([domain_override("blind", w.cap, &w.malicious), merkle_root(w), w.blind])
 }
 
 fn to_hex(value: F) -> String {
@@ -138,13 +184,21 @@ fn canonical_attestation_bytes(c: F, w: &Witness) -> Vec<u8> {
     format!("{}|{}|{}|{}|{}", to_hex(c), w.policy_id, w.session_id, w.nonce, w.collector_id).into_bytes()
 }
 
+/// Canonical collector identity shared by Rust and Python:
+/// collector_id = big-endian u64 of SHA256(raw Ed25519 public key)[0..8] & (2^63 - 1).
+fn collector_id_from_key_bytes(raw: &[u8]) -> u64 {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(raw);
+    let mut bytes = [0u8; 8];
+    bytes.copy_from_slice(&digest[0..8]);
+    u64::from_be_bytes(bytes) & 0x7fff_ffff_ffff_ffff
+}
+
 fn make_collector(sk_bytes: [u8; 32]) -> (SigningKey, VerifyingKey, u64) {
     let sk = SigningKey::from_bytes(&sk_bytes);
     let vk = sk.verifying_key();
-    let raw = vk.to_bytes();
-    let mut acc: u64 = 0;
-    for b in raw.iter().take(8) { acc = acc.rotate_left(8) ^ (*b as u64); }
-    (sk, vk, acc & 0x7fff_ffff_ffff_ffff)
+    let id = collector_id_from_key_bytes(&vk.to_bytes());
+    (sk, vk, id)
 }
 
 /// Deterministic compliant graph. High nodes only point to High nodes.
@@ -190,6 +244,7 @@ fn make_compliant_witness(cap: usize, density: &str, seed: u64, collector_id: u6
         cap, edge_cap, nodes, edges,
         policy_id: 7, session_id: 20261126, nonce: 1 + seed % 100_000, collector_id,
         blind: host_hash::<1>([f(seed ^ 0x5A5A_5A5A)]),
+        malicious: MaliciousOverrides::default(),
     }
 }
 
@@ -202,6 +257,7 @@ fn fixed_template(cap: usize) -> Witness {
         edges: vec![GEdge { src: 0, dst: 0, kind: 0, active: false }; 2 * cap],
         policy_id: 0, session_id: 0, nonce: 0, collector_id: 0,
         blind: F::ZERO,
+        malicious: MaliciousOverrides::default(),
     }
 }
 
@@ -212,6 +268,12 @@ struct IfcConfig {
     q_select: Selector,
     q_cross: Selector,
     q_last: Selector,
+    q_first: Selector,
+    q_domain: Selector,
+    q_zero: Selector,
+    node_pos: Column<Fixed>,
+    domain_fixed: Column<Fixed>,
+    cap_fixed: Column<Fixed>,
     label: Column<Advice>,
     s: Column<Advice>,
     node_type: Column<Advice>,
@@ -262,11 +324,14 @@ fn adv(meta: &mut VirtualCells<'_, F>, col: Column<Advice>) -> Expression<F> {
 }
 
 #[derive(Clone, Debug)]
-struct IfcCircuit { witness: Option<Witness> }
+struct IfcCircuit { witness: Option<Witness>, cap_hint: usize }
 
 impl IfcCircuit {
-    fn new(w: Witness) -> Self { Self { witness: Some(w) } }
-    fn template(cap: usize) -> Self { Self { witness: Some(fixed_template(cap)) } }
+    fn new(w: Witness) -> Self {
+        let cap = w.cap;
+        Self { witness: Some(w), cap_hint: cap }
+    }
+    fn template(cap: usize) -> Self { Self { witness: Some(fixed_template(cap)), cap_hint: cap } }
 }
 
 impl Circuit<F> for IfcCircuit {
@@ -274,7 +339,7 @@ impl Circuit<F> for IfcCircuit {
     type FloorPlanner = SimpleFloorPlanner;
 
     fn without_witnesses(&self) -> Self {
-        Self { witness: Some(fixed_template(50)) }
+        Self { witness: Some(fixed_template(self.cap_hint)), cap_hint: self.cap_hint }
     }
 
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
@@ -301,6 +366,9 @@ impl Circuit<F> for IfcCircuit {
         let sel_empty_hash = meta.advice_column();
         let edge_selected = meta.advice_column();
         let cb_index = meta.fixed_column();
+        let node_pos = meta.fixed_column();
+        let domain_fixed = meta.fixed_column();
+        let cap_fixed = meta.fixed_column();
         let cb_sel_src = meta.advice_column();
         let cb_sel_dst = meta.advice_column();
         let cb_s_copy = meta.advice_column();
@@ -348,6 +416,9 @@ impl Circuit<F> for IfcCircuit {
         let q_select = meta.complex_selector();
         let q_cross = meta.complex_selector();
         let q_last = meta.complex_selector();
+        let q_first = meta.selector();
+        let q_domain = meta.selector();
+        let q_zero = meta.selector();
 
         // Node gate: boolean bits, type enum 0..=5, High=>S, Low sink not in S.
         meta.create_gate("node encoding and closure endpoints", |meta| {
@@ -360,9 +431,13 @@ impl Circuit<F> for IfcCircuit {
             let b2 = adv(meta, type_bits[2]);
             let is_sink_type = adv(meta, is_sink_type);
             let is_low_sink = adv(meta, is_low_sink);
+            let leaf_tl = adv(meta, leaf_domain);
+            let node_index = adv(meta, node_index);
+            let pos = meta.query_fixed(node_pos);
             let one = Expression::Constant(F::ONE);
             let type_sum = b0.clone() + b1.clone() * Expression::Constant(F::from(2))
                 + b2.clone() * Expression::Constant(F::from(4));
+            let two = Expression::Constant(F::from(2));
             vec![
                 q.clone() * label.clone() * (label.clone() - one.clone()),
                 q.clone() * s.clone() * (s.clone() - one.clone()),
@@ -370,11 +445,15 @@ impl Circuit<F> for IfcCircuit {
                 q.clone() * b1.clone() * (b1.clone() - one.clone()),
                 q.clone() * b2.clone() * (b2.clone() - one.clone()),
                 q.clone() * b1.clone() * b2.clone(), // exclude types 6,7
-                q.clone() * (typ - type_sum),
+                q.clone() * (typ.clone() - type_sum),
                 q.clone() * label.clone() * (one.clone() - s.clone()),
                 q.clone() * (is_sink_type.clone() - b0 * (one.clone() - b1) * b2),
-                q.clone() * (is_low_sink.clone() - is_sink_type * (one.clone() - label)),
+                q.clone() * (is_low_sink.clone() - is_sink_type.clone() * (one.clone() - label.clone())),
                 q.clone() * is_low_sink * s,
+                // F1/F2: the committed leaf preimage is the checked type/label,
+                // and the committed position is the fixed row position.
+                q.clone() * (leaf_tl - (typ * two + label)),
+                q.clone() * (node_index - pos),
             ]
         });
 
@@ -390,6 +469,8 @@ impl Circuit<F> for IfcCircuit {
             let s_src = adv(meta, s_src);
             let s_dst = adv(meta, s_dst);
             let inv = adv(meta, inv_delta);
+            let leaf_idx = adv(meta, leaf_value);
+            let cap = meta.query_fixed(cap_fixed);
             let one = Expression::Constant(F::ONE);
             vec![
                 q.clone() * active.clone() * (active.clone() - one.clone()),
@@ -397,9 +478,11 @@ impl Circuit<F> for IfcCircuit {
                 q.clone() * (one.clone() - active.clone()) * src.clone(),
                 q.clone() * (one.clone() - active.clone()) * dst.clone(),
                 q.clone() * (one.clone() - active.clone()) * kind,
-                q.clone() * active.clone() * ((src - dst) * inv.clone() - one.clone()),
+                q.clone() * active.clone() * ((src.clone() - dst.clone()) * inv.clone() - one.clone()),
                 q.clone() * (one.clone() - active.clone()) * inv,
-                q.clone() * active * s_src * (one - s_dst),
+                q.clone() * active * s_src * (one - s_dst.clone()),
+                // F3: committed edge preimage equals the checked endpoints.
+                q * (leaf_idx - src * cap - dst),
             ]
         });
 
@@ -420,6 +503,7 @@ impl Circuit<F> for IfcCircuit {
         meta.create_gate("crossbar one-hot and accumulators", |meta| {
             let q = meta.query_selector(q_cross);
             let last = meta.query_selector(q_last);
+            let first = meta.query_selector(q_first);
             let idx = meta.query_fixed(cb_index);
             let sel_src = adv(meta, cb_sel_src);
             let sel_dst = adv(meta, cb_sel_dst);
@@ -444,19 +528,40 @@ impl Circuit<F> for IfcCircuit {
                 q.clone() * sel_dst.clone() * (sel_dst.clone() - one.clone()),
                 q.clone() * (prod_src.clone() - sel_src.clone() * s_copy.clone()),
                 q.clone() * (prod_dst.clone() - sel_dst.clone() * s_copy),
-                q.clone() * (acc_src.clone() - prev_src - prod_src.clone()),
-                q.clone() * (acc_dst.clone() - prev_dst - prod_dst),
-                q.clone() * (acc_sel_src.clone() - prev_sel_src - sel_src.clone()),
-                q.clone() * (acc_sel_dst.clone() - prev_sel_dst - sel_dst.clone()),
-                q.clone() * (acc_idx_src.clone() - prev_idx_src - idx.clone() * sel_src.clone()),
-                q.clone() * (acc_idx_dst - prev_idx_dst - idx * sel_dst),
+                q.clone() * (acc_src.clone() - prev_src.clone() - prod_src.clone()),
+                q.clone() * (acc_dst.clone() - prev_dst.clone() - prod_dst),
+                q.clone() * (acc_sel_src.clone() - prev_sel_src.clone() - sel_src.clone()),
+                q.clone() * (acc_sel_dst.clone() - prev_sel_dst.clone() - sel_dst.clone()),
+                q.clone() * (acc_idx_src.clone() - prev_idx_src.clone() - idx.clone() * sel_src.clone()),
+                q.clone() * (acc_idx_dst.clone() - prev_idx_dst.clone() - idx * sel_dst),
                 q.clone() * last.clone() * (acc_sel_src - one.clone()),
-                q.clone() * last * (acc_sel_dst - one),
+                q.clone() * last.clone() * (acc_sel_dst - one),
+                // F5: every block starts with six zero accumulators.
+                q.clone() * first.clone() * prev_src,
+                q.clone() * first.clone() * prev_dst,
+                q.clone() * first.clone() * prev_sel_src,
+                q.clone() * first.clone() * prev_sel_dst,
+                q.clone() * first.clone() * prev_idx_src,
+                q * first * prev_idx_dst,
             ]
         });
 
+        // F4: Poseidon domain tags and the empty-leaf padding input are fixed.
+        meta.create_gate("domain constants", |meta| {
+            let qd = meta.query_selector(q_domain);
+            let domain = adv(meta, leaf_domain);
+            let fixed = meta.query_fixed(domain_fixed);
+            vec![qd * (domain - fixed)]
+        });
+        meta.create_gate("empty padding zero", |meta| {
+            let qz = meta.query_selector(q_zero);
+            let value = adv(meta, leaf_value);
+            vec![qz * value]
+        });
+
         IfcConfig {
-            q_node, q_edge, q_select, q_cross, q_last,
+            q_node, q_edge, q_select, q_cross, q_last, q_first, q_domain, q_zero,
+            node_pos, domain_fixed, cap_fixed,
             label, s, node_type, node_index, type_bits, is_sink_type, is_low_sink,
             src, dst, kind, active, s_src, s_dst, inv_delta, leaf_domain, leaf_value,
             public_copy, sel_active, sel_edge_hash, sel_empty_hash, edge_selected,
@@ -482,9 +587,11 @@ impl Circuit<F> for IfcCircuit {
                 let mut leaf_tl = Vec::with_capacity(cap);
                 for i in 0..cap {
                     config.q_node.enable(&mut region, i)?;
+                    region.assign_fixed(|| "node_pos", config.node_pos, i,
+                        || Value::known(f(i as u64)))?;
                     let node = &w.nodes[i];
                     index_cells.push(region.assign_advice(|| "idx", config.node_index, i,
-                        || Value::known(f(i as u64)))?);
+                        || Value::known(node_pos_value(i, &w.malicious)))?);
                     s_cells.push(region.assign_advice(|| "s", config.s, i,
                         || Value::known(f(node.s)))?);
                     region.assign_advice(|| "label", config.label, i,
@@ -502,7 +609,7 @@ impl Circuit<F> for IfcCircuit {
                     region.assign_advice(|| "is_low_sink", config.is_low_sink, i,
                         || Value::known(f(is_low_sink)))?;
                     leaf_tl.push(region.assign_advice(|| "leaf_tl", config.leaf_domain, i,
-                        || Value::known(f(node.typ * 2 + node.label)))?);
+                        || Value::known(node_tl_value(node, i, &w.malicious)))?);
                 }
                 Ok((index_cells, s_cells, leaf_tl))
             },
@@ -522,6 +629,8 @@ impl Circuit<F> for IfcCircuit {
                     let mut dsts = Vec::with_capacity(edge_cap);
                     for j in 0..edge_cap {
                         config.q_edge.enable(&mut region, j)?;
+                        region.assign_fixed(|| "cap", config.cap_fixed, j,
+                            || Value::known(f(cap as u64)))?;
                         let e = &w.edges[j];
                         srcs.push(region.assign_advice(|| "src", config.src, j,
                             || Value::known(f(e.src as u64)))?);
@@ -531,10 +640,14 @@ impl Circuit<F> for IfcCircuit {
                             || Value::known(f(e.kind)))?);
                         actives.push(region.assign_advice(|| "active", config.active, j,
                             || Value::known(f(e.active as u64)))?);
+                        let s_src_val = w.malicious.s_src.as_ref().and_then(|v| v.get(j)).copied()
+                            .unwrap_or_else(|| f(w.nodes[if e.active { e.src } else { 0 }].s));
+                        let s_dst_val = w.malicious.s_dst.as_ref().and_then(|v| v.get(j)).copied()
+                            .unwrap_or_else(|| f(w.nodes[if e.active { e.dst } else { 0 }].s));
                         s_srcs.push(region.assign_advice(|| "s_src", config.s_src, j,
-                            || Value::known(f(w.nodes[if e.active { e.src } else { 0 }].s)))?);
+                            || Value::known(s_src_val))?);
                         s_dsts.push(region.assign_advice(|| "s_dst", config.s_dst, j,
-                            || Value::known(f(w.nodes[if e.active { e.dst } else { 0 }].s)))?);
+                            || Value::known(s_dst_val))?);
                         let delta = f(e.src as u64) - f(e.dst as u64);
                         let inv = if !e.active || bool::from(delta.is_zero()) {
                             F::ZERO
@@ -543,7 +656,7 @@ impl Circuit<F> for IfcCircuit {
                         };
                         region.assign_advice(|| "inv", config.inv_delta, j, || Value::known(inv))?;
                         leaf_idx.push(region.assign_advice(|| "leaf_idx", config.leaf_value, j,
-                            || Value::known(f(e.src as u64 * cap as u64 + e.dst as u64)))?);
+                            || Value::known(edge_idx_value(e, j, cap, &w.malicious)))?);
                     }
                     Ok((leaf_idx, kinds, actives, s_srcs, s_dsts, srcs, dsts))
                 },
@@ -564,7 +677,11 @@ impl Circuit<F> for IfcCircuit {
                     for i in 0..cap {
                         let row = j * cap + i;
                         config.q_cross.enable(&mut region, row)?;
+                        if i == 0 { config.q_first.enable(&mut region, row)?; }
                         if i == cap - 1 { config.q_last.enable(&mut region, row)?; }
+                        if let Some(v) = w.malicious.crossbar_prev.get(&(j, i)) {
+                            prev_vals = (v[0], v[1], v[2], v[3], v[4], v[5]);
+                        }
                         region.assign_fixed(|| "cb_idx", config.cb_index, row,
                             || Value::known(f(i as u64)))?;
                         let sel_src = if effective_src == i { F::ONE } else { F::ZERO };
@@ -659,21 +776,21 @@ impl Circuit<F> for IfcCircuit {
         // ---- Poseidon Merkle tree ----
         let mut leaves: Vec<AssignedCell<F, F>> = Vec::with_capacity(cap + edge_cap);
         let node_domain = layouter.assign_region(|| "node domain", |mut region|
-            region.assign_advice(|| "nd", config.leaf_domain, 0,
-                || Value::known(cap_domain(DOMAIN_NODE, cap))))?;
+            assign_domain(&config, &mut region, 0, cap_domain(DOMAIN_NODE, cap),
+                domain_override("node", cap, &w.malicious)))?;
         for i in 0..cap {
             leaves.push(hash_words::<_, 3>(&config, layouter.namespace(|| format!("node_leaf_{i}")),
                 [node_domain.clone(), node_tl_cells[i].clone(), index_cells[i].clone()])?);
         }
         let edge_domain = layouter.assign_region(|| "edge domain", |mut region|
-            region.assign_advice(|| "ed", config.leaf_domain, 0,
-                || Value::known(cap_domain(DOMAIN_EDGE, cap))))?;
+            assign_domain(&config, &mut region, 0, cap_domain(DOMAIN_EDGE, cap),
+                domain_override("edge", cap, &w.malicious)))?;
         let mut edge_hashes = Vec::with_capacity(edge_cap);
         for j in 0..edge_cap {
             edge_hashes.push(hash_words::<_, 3>(&config, layouter.namespace(|| format!("edge_hash_{j}")),
                 [edge_domain.clone(), edge_idx_cells[j].clone(), kind_cells[j].clone()])?);
         }
-        let empty_cell = empty_leaf_cell(&config, &mut layouter, cap)?;
+        let empty_cell = empty_leaf_cell(&config, &mut layouter, cap, &w.malicious)?;
         let selected = layouter.assign_region(
             || "edge leaf selection",
             |mut region: Region<'_, F>| {
@@ -684,14 +801,14 @@ impl Circuit<F> for IfcCircuit {
                         || Value::known(f(w.edges[j].active as u64)))?;
                     region.constrain_equal(active_copy.cell(), active_cells[j].cell())?;
                     let hash_copy = region.assign_advice(|| "sel_edge_hash", config.sel_edge_hash, j,
-                        || Value::known(edge_hash(w.edges[j].src, w.edges[j].dst, w.edges[j].kind, cap)))?;
+                        || Value::known(edge_hash(&w.edges[j], j, cap, &w.malicious)))?;
                     region.constrain_equal(hash_copy.cell(), edge_hashes[j].cell())?;
                     let empty_copy = region.assign_advice(|| "sel_empty_hash", config.sel_empty_hash, j,
-                        || Value::known(empty_leaf(cap)))?;
+                        || Value::known(empty_leaf(cap, &w.malicious)))?;
                     region.constrain_equal(empty_copy.cell(), empty_cell.cell())?;
                     let val = if w.edges[j].active {
-                        edge_hash(w.edges[j].src, w.edges[j].dst, w.edges[j].kind, cap)
-                    } else { empty_leaf(cap) };
+                        edge_hash(&w.edges[j], j, cap, &w.malicious)
+                    } else { empty_leaf(cap, &w.malicious) };
                     out.push(region.assign_advice(|| "edge_selected", config.edge_selected, j,
                         || Value::known(val))?);
                 }
@@ -709,8 +826,8 @@ impl Circuit<F> for IfcCircuit {
             leaves = next;
         }
         let blind_domain = layouter.assign_region(|| "blind domain", |mut region|
-            region.assign_advice(|| "bd", config.leaf_domain, 0,
-                || Value::known(cap_domain(DOMAIN_BLIND, cap))))?;
+            assign_domain(&config, &mut region, 0, cap_domain(DOMAIN_BLIND, cap),
+                domain_override("blind", cap, &w.malicious)))?;
         let blind_cell = layouter.assign_region(|| "blind factor", |mut region|
             region.assign_advice(|| "blind", config.leaf_value, 0, || Value::known(w.blind)))?;
         let committed = hash_words::<_, 3>(&config, layouter.namespace(|| "commitment"),
@@ -725,12 +842,23 @@ fn assign_value(region: &mut Region<'_, F>, col: Column<Advice>, offset: usize, 
     region.assign_advice(|| "value", col, offset, || Value::known(value))
 }
 
-fn empty_leaf_cell(config: &IfcConfig, layouter: &mut impl Layouter<F>, cap: usize)
-    -> Result<AssignedCell<F, F>, Error> {
+fn assign_domain(config: &IfcConfig, region: &mut Region<'_, F>, offset: usize,
+    fixed_value: F, advice_value: F) -> Result<AssignedCell<F, F>, Error> {
+    config.q_domain.enable(region, offset)?;
+    region.assign_fixed(|| "domain_fixed", config.domain_fixed, offset,
+        || Value::known(fixed_value))?;
+    region.assign_advice(|| "domain", config.leaf_domain, offset, || Value::known(advice_value))
+}
+
+fn empty_leaf_cell(config: &IfcConfig, layouter: &mut impl Layouter<F>, cap: usize,
+    ov: &MaliciousOverrides) -> Result<AssignedCell<F, F>, Error> {
     let domain = layouter.assign_region(|| "empty leaf domain", |mut region|
-        assign_value(&mut region, config.leaf_domain, 0, cap_domain(DOMAIN_EMPTY, cap)))?;
-    let zero = layouter.assign_region(|| "empty leaf zero", |mut region|
-        assign_value(&mut region, config.leaf_value, 0, F::ZERO))?;
+        assign_domain(config, &mut region, 0, cap_domain(DOMAIN_EMPTY, cap),
+            domain_override("empty", cap, ov)))?;
+    let zero = layouter.assign_region(|| "empty leaf zero", |mut region| {
+        config.q_zero.enable(&mut region, 0)?;
+        assign_value(&mut region, config.leaf_value, 0, ov.empty_zero.unwrap_or(F::ZERO))
+    })?;
     hash_words::<_, 2>(config, layouter.namespace(|| "empty leaf"), [domain, zero])
 }
 
@@ -740,6 +868,164 @@ fn hash_words<L: Layouter<F>, const N: usize>(config: &IfcConfig, mut layouter: 
     let hasher = GadgetHash::<_, _, P128Pow5T3, ConstantLength<N>, 3, 2>::init(
         chip, layouter.namespace(|| "init"))?;
     hasher.hash(layouter.namespace(|| "hash"), words)
+}
+
+fn attack_base(cap: usize) -> Witness {
+    let nodes = (0..cap).map(|i| GNode {
+        typ: if i == cap - 1 { T_PUBLIC_SINK } else { T_PUBLIC_SOURCE },
+        label: 0,
+        s: 0,
+    }).collect();
+    Witness {
+        cap, edge_cap: 2 * cap, nodes,
+        edges: vec![GEdge { src: 0, dst: 0, kind: 0, active: false }; 2 * cap],
+        policy_id: 7, session_id: 20261126, nonce: 4242,
+        collector_id: make_collector([0x11; 32]).2,
+        blind: f(0x1234_5678_9ABC_DEF0),
+        malicious: MaliciousOverrides::default(),
+    }
+}
+
+fn illegal_attack_base(cap: usize) -> Witness {
+    let mut w = attack_base(cap);
+    for i in 0..cap / 2 {
+        w.nodes[i] = GNode { typ: T_CONFIDENTIAL_SOURCE, label: 1, s: 1 };
+    }
+    w.edges[0] = GEdge { src: 0, dst: cap - 1, kind: 0, active: true };
+    w
+}
+
+fn attack_witness(cap: usize, case: &str) -> Witness {
+    let mut w = attack_base(cap);
+    match case {
+        "compliant" => {}
+        "illegal_ifc" => w = illegal_attack_base(cap),
+        "node_tl_mismatch" => {
+            w.nodes[0] = GNode { typ: T_CONFIDENTIAL_SOURCE, label: 1, s: 1 };
+            w.malicious.node_tl = Some(vec![f(0); cap]);
+        }
+        "node_position_mismatch" => {
+            w.malicious.node_index = Some((0..cap).map(|i| f(((i + 1) % cap) as u64)).collect());
+        }
+        "edge_idx_mismatch" => {
+            let a = cap / 2;
+            w.edges[0] = GEdge { src: a, dst: a + 1, kind: 0, active: true };
+            let mut idx = vec![f(0); 2 * cap];
+            idx[0] = f(((a + 2) * cap + (a + 3)) as u64);
+            w.malicious.edge_idx = Some(idx);
+        }
+        "crossbar_prev_src" => {
+            w = illegal_attack_base(cap);
+            w.malicious.crossbar_prev.insert((0, 0), [F::ONE.neg(), F::ZERO, F::ZERO, F::ZERO, F::ZERO, F::ZERO]);
+            w.malicious.s_src = Some(vec![F::ZERO; 2 * cap]);
+        }
+        "crossbar_prev_dst" => {
+            w = illegal_attack_base(cap);
+            w.malicious.crossbar_prev.insert((0, 0), [F::ZERO, F::ONE, F::ZERO, F::ZERO, F::ZERO, F::ZERO]);
+            w.malicious.s_dst = Some(vec![F::ONE; 2 * cap]);
+        }
+        "crossbar_prev_sel_src" => {
+            w = illegal_attack_base(cap);
+            w.malicious.crossbar_prev.insert((0, 0), [F::ZERO, F::ZERO, F::ONE.neg(), F::ZERO, F::ZERO, F::ZERO]);
+        }
+        "crossbar_prev_sel_dst" => {
+            w = illegal_attack_base(cap);
+            w.malicious.crossbar_prev.insert((0, 0), [F::ZERO, F::ZERO, F::ZERO, F::ONE, F::ZERO, F::ZERO]);
+        }
+        "crossbar_prev_idx_src" => {
+            w = illegal_attack_base(cap);
+            w.edges[0].src = 1;
+            w.malicious.crossbar_prev.insert((0, 0), [F::ZERO, F::ZERO, F::ZERO, F::ZERO, F::ONE, F::ZERO]);
+            w.malicious.s_src = Some(vec![f(w.nodes[1].s); 2 * cap]);
+        }
+        "crossbar_prev_idx_dst" => {
+            w = illegal_attack_base(cap);
+            w.malicious.crossbar_prev.insert((0, 0), [F::ZERO, F::ZERO, F::ZERO, F::ZERO, F::ZERO, F::ONE]);
+        }
+        "domain_node" => {
+            w.malicious.domains.insert("node", cap_domain(DOMAIN_NODE, cap) + F::ONE);
+        }
+        "domain_edge" => {
+            w.malicious.domains.insert("edge", cap_domain(DOMAIN_EDGE, cap) + F::ONE);
+        }
+        "domain_empty" => {
+            w.malicious.domains.insert("empty", cap_domain(DOMAIN_EMPTY, cap) + F::ONE);
+        }
+        "domain_blind" => {
+            w.malicious.domains.insert("blind", cap_domain(DOMAIN_BLIND, cap) + F::ONE);
+        }
+        "empty_zero" => w.malicious.empty_zero = Some(F::ONE),
+        _ => panic!("unknown attack case {case}"),
+    }
+    w
+}
+
+fn attack_case_names() -> Vec<&'static str> {
+    vec![
+        "compliant", "illegal_ifc",
+        "node_tl_mismatch", "node_position_mismatch", "edge_idx_mismatch",
+        "crossbar_prev_src", "crossbar_prev_dst", "crossbar_prev_sel_src",
+        "crossbar_prev_sel_dst", "crossbar_prev_idx_src", "crossbar_prev_idx_dst",
+        "domain_node", "domain_edge", "domain_empty", "domain_blind", "empty_zero",
+    ]
+}
+
+fn attack_suite(cap: usize) {
+    let k = k_for_cap(cap);
+    let mut cases = Vec::new();
+    for name in attack_case_names() {
+        let w = attack_witness(cap, name);
+        let instance = vec![commitment(&w), f(w.policy_id), f(w.session_id), f(w.nonce), f(w.collector_id)];
+        let prover = MockProver::run(k, &IfcCircuit::new(w), vec![instance])
+            .expect("MockProver::run on attack case");
+        let err = prover.verify().err().map(|e| format!("{e:?}"));
+        cases.push(json!({
+            "case": name,
+            "satisfied": err.is_none(),
+            "first_error": err.map(|s| s.chars().take(400).collect::<String>()),
+        }));
+    }
+    println!("{}", json!({ "schema": SCHEMA, "phase": "phase1b1-2", "cap": cap, "cases": cases }));
+}
+
+fn prove_attack(cap: usize, case: &str, setup_path: &str, proof_path: &str, public_path: &str) {
+    let setup = load_setup(setup_path);
+    assert_eq!(setup["schema"].as_str(), Some(SCHEMA), "setup schema mismatch");
+    let k = setup["k"].as_u64().unwrap() as u32;
+    assert_eq!(setup["vk_hash"].as_str().unwrap(), to_hex(expected_vk_hash(cap, k)), "vk hash mismatch");
+    let w = attack_witness(cap, case);
+    let c = commitment(&w);
+    let instance = vec![c, f(w.policy_id), f(w.session_id), f(w.nonce), f(w.collector_id)];
+    let (sk, vk_collector, _) = make_collector([0x11; 32]);
+    let sig = sk.sign(&canonical_attestation_bytes(c, &w));
+    let (params, _, pk) = keygen_with_k(cap, k);
+    assert_eq!(setup["vk_digest"].as_str().unwrap(), to_hex_bytes(&vk_digest(pk.get_vk())),
+        "prover VK does not match setup-pinned VK");
+    let inst_refs: Vec<&[F]> = vec![&instance[..]];
+    let all_instances: Vec<&[&[F]]> = vec![&inst_refs];
+    let mut transcript = Blake2bWrite::<_, vesta::Affine, _>::init(vec![]);
+    let result = create_proof(&params, &pk, &[IfcCircuit::new(w.clone())], &all_instances,
+        StdRng::seed_from_u64(0x5EED_1234), &mut transcript);
+    match result {
+        Ok(()) => {
+            let proof = transcript.finalize();
+            fs::write(proof_path, &proof).expect("write attack proof");
+            let public = json!({
+                "schema": SCHEMA, "circuit_version": CIRCUIT_VERSION, "cap": cap,
+                "commitment": to_hex(c), "policy_id": w.policy_id, "session_id": w.session_id,
+                "nonce": w.nonce, "collector_id": w.collector_id,
+                "collector_public_key_claimed": to_hex_bytes(&vk_collector.to_bytes()),
+                "collector_signature": to_hex_bytes(&sig.to_bytes()),
+                "k": k, "proof_bytes": proof.len(),
+            });
+            fs::write(public_path, serde_json::to_vec_pretty(&public).unwrap()).expect("write attack public");
+            println!("{}", json!({ "case": case, "create_proof_ok": true, "proof_bytes": proof.len() }));
+        }
+        Err(e) => {
+            println!("{}", json!({ "case": case, "create_proof_ok": false,
+                "reason": format!("{e:?}").chars().take(400).collect::<String>() }));
+        }
+    }
 }
 
 fn k_for_cap(cap: usize) -> u32 {
@@ -819,14 +1105,26 @@ fn setup(cap: usize, out: &str) {
     println!("{}", serde_json::to_string(&result).unwrap());
 }
 
-fn prove(cap: usize, density: &str, seed: u64, setup_path: &str, proof_path: &str, public_path: &str) {
+/// Sample a 254-bit blind from the operating-system CSPRNG.
+/// The top two bits are cleared so the canonical repr is always in field.
+fn random_blind() -> F {
+    let mut bytes = [0u8; 32];
+    SysRng.try_fill_bytes(&mut bytes).expect("OS CSPRNG");
+    // Pallas base-field repr is little-endian: bytes[31] holds the high bits.
+    bytes[31] &= 0x3f;
+    Option::<F>::from(F::from_repr(bytes)).expect("CSPRNG blind must be in field")
+}
+
+fn prove(cap: usize, density: &str, seed: u64, setup_path: &str, proof_path: &str,
+    public_path: &str, meta_path: &str) {
     let setup = load_setup(setup_path);
     assert_eq!(setup["schema"].as_str(), Some(SCHEMA), "setup schema mismatch");
     let k = setup["k"].as_u64().unwrap() as u32;
     assert_eq!(setup["vk_hash"].as_str().unwrap(), to_hex(expected_vk_hash(cap, k)), "vk hash mismatch");
 
-    let (sk, vk_collector, collector_id) = make_collector([0x11; 32]);
-    let w = make_compliant_witness(cap, density, seed, collector_id);
+    let (sk, _vk_collector, collector_id) = make_collector([0x11; 32]);
+    let mut w = make_compliant_witness(cap, density, seed, collector_id);
+    w.blind = random_blind();
     let c = commitment(&w);
     let instance = vec![c, f(w.policy_id), f(w.session_id), f(w.nonce), f(w.collector_id)];
     let sig = sk.sign(&canonical_attestation_bytes(c, &w));
@@ -839,7 +1137,7 @@ fn prove(cap: usize, density: &str, seed: u64, setup_path: &str, proof_path: &st
     let all_instances: Vec<&[&[F]]> = vec![&inst_refs];
     let mut transcript = Blake2bWrite::<_, vesta::Affine, _>::init(vec![]);
     create_proof(&params, &pk, &[IfcCircuit::new(w.clone())], &all_instances,
-        StdRng::seed_from_u64(seed), &mut transcript).expect("create_proof");
+        rand::make_rng::<StdRng>(), &mut transcript).expect("create_proof");
     let proof = transcript.finalize();
     let prove_ms = t0.elapsed().as_millis();
     fs::write(proof_path, &proof).expect("write proof");
@@ -853,69 +1151,134 @@ fn prove(cap: usize, density: &str, seed: u64, setup_path: &str, proof_path: &st
         "session_id": w.session_id,
         "nonce": w.nonce,
         "collector_id": w.collector_id,
-        "collector_public_key": to_hex_bytes(&vk_collector.to_bytes()),
         "collector_signature": to_hex_bytes(&sig.to_bytes()),
         "k": k,
         "prove_ms": prove_ms,
         "proof_bytes": proof.len(),
-        "density": density,
-        "active_edges": w.edges.iter().filter(|e| e.active).count(),
     });
     fs::write(public_path, serde_json::to_vec_pretty(&public).unwrap()).expect("write public");
+    let meta = json!({
+        "schema": SCHEMA,
+        "cap": cap,
+        "density": density,
+        "active_edges": w.edges.iter().filter(|e| e.active).count(),
+        "note": "Benchmark-private metadata; never part of proof public inputs."
+    });
+    fs::write(meta_path, serde_json::to_vec_pretty(&meta).unwrap()).expect("write private meta");
     println!("{}", serde_json::to_string(&public).unwrap());
 }
 
-fn verify(setup_path: &str, proof_path: &str, public_path: &str, out: &str) {
+fn finish_verify(out: &str, result: JsonValue, reason: Option<&str>) {
+    let mut result = result;
+    if let Some(r) = reason {
+        result["reason"] = json!(r);
+    }
+    fs::write(out, serde_json::to_vec_pretty(&result).unwrap()).expect("write verify result");
+    println!("{}", serde_json::to_string(&result).unwrap());
+}
+
+fn verify(setup_path: &str, allowlist_path: &str, proof_path: &str, public_path: &str, out: &str) {
     let setup = load_setup(setup_path);
     let public: JsonValue = serde_json::from_slice(&fs::read(public_path).expect("read public"))
         .expect("parse public");
-    assert_eq!(setup["schema"].as_str(), Some(SCHEMA));
-    assert_eq!(public["schema"].as_str(), Some(SCHEMA));
+    let allowlist: JsonValue = serde_json::from_slice(&fs::read(allowlist_path).expect("read allowlist"))
+        .expect("parse allowlist");
+    let mut result = json!({
+        "schema": SCHEMA, "accepted": false,
+        "verifier_read_graph": false,
+        "verifier_called_keygen_vk_on_witness": false,
+        "collector_key_source": "independent_allowlist",
+        "note": "pure_verify_ms excludes VK rebuild and signature verification."
+    });
+
+    if setup["schema"].as_str() != Some(SCHEMA)
+        || public["schema"].as_str() != Some(SCHEMA)
+        || allowlist["schema"].as_str() != Some("collector-allowlist-v1") {
+        finish_verify(out, result, Some("schema mismatch"));
+        return;
+    }
     let cap = setup["cap"].as_u64().unwrap() as usize;
     let k = setup["k"].as_u64().unwrap() as u32;
-    assert_eq!(setup["vk_hash"].as_str().unwrap(), to_hex(expected_vk_hash(cap, k)));
+    if setup["vk_hash"].as_str().unwrap() != to_hex(expected_vk_hash(cap, k)) {
+        finish_verify(out, result, Some("vk hash mismatch"));
+        return;
+    }
+    let cid = match public.get("collector_id").and_then(|v| v.as_u64()) {
+        Some(v) => v,
+        None => { finish_verify(out, result, Some("missing collector_id")); return; }
+    };
+    result["cap"] = json!(cap);
+    result["k"] = json!(k);
 
-    // No graph or witness file is read in this function.
+    let entry = allowlist["collectors"].as_array()
+        .and_then(|xs| xs.iter().find(|e| e["collector_id"].as_u64() == Some(cid)));
+    let entry = match entry {
+        Some(v) => v,
+        None => { finish_verify(out, result, Some("collector_id not in trusted allowlist")); return; }
+    };
+    let pk_bytes = match hex_bytes(entry["collector_public_key"].as_str().unwrap_or(""), 32) {
+        Some(v) => v,
+        None => { finish_verify(out, result, Some("invalid allowlist public key")); return; }
+    };
+    let derived_id = collector_id_from_key_bytes(&pk_bytes);
+    if derived_id != cid || entry["collector_id"].as_u64().unwrap() != derived_id {
+        finish_verify(out, result, Some("collector_id does not match allowlisted public key"));
+        return;
+    }
+    // Any collector key supplied inside public.json is deliberately ignored.
+    let mut pk_arr = [0u8; 32]; pk_arr.copy_from_slice(&pk_bytes);
+    let collector_vk = match VerifyingKey::from_bytes(&pk_arr) {
+        Ok(v) => v,
+        Err(_) => { finish_verify(out, result, Some("invalid Ed25519 verifying key")); return; }
+    };
+    let sig_bytes = match hex_bytes(public["collector_signature"].as_str().unwrap_or(""), 64) {
+        Some(v) => v,
+        None => { finish_verify(out, result, Some("invalid signature encoding")); return; }
+    };
+    let mut sig_arr = [0u8; 64]; sig_arr.copy_from_slice(&sig_bytes);
+    let sig = Signature::from_bytes(&sig_arr);
     let commitment_hex = public["commitment"].as_str().unwrap();
+    let attestation = format!(
+        "{}|{}|{}|{}|{}", commitment_hex,
+        public["policy_id"].as_u64().unwrap(), public["session_id"].as_u64().unwrap(),
+        public["nonce"].as_u64().unwrap(), cid,
+    ).into_bytes();
+    let t_sig = Instant::now();
+    let sig_ok = collector_vk.verify(&attestation, &sig).is_ok();
+    result["sig_verify_ms"] = json!(t_sig.elapsed().as_millis());
+    if !sig_ok {
+        finish_verify(out, result, Some("collector signature rejected"));
+        return;
+    }
+    result["collector_signature_verified"] = json!(true);
+
     let instance = vec![
         from_hex(commitment_hex).expect("parse commitment"),
         f(public["policy_id"].as_u64().unwrap()),
         f(public["session_id"].as_u64().unwrap()),
         f(public["nonce"].as_u64().unwrap()),
-        f(public["collector_id"].as_u64().unwrap()),
+        f(cid),
     ];
     let proof = fs::read(proof_path).expect("read proof");
-
-    let pk_bytes = hex_bytes(public["collector_public_key"].as_str().unwrap(), 32).expect("collector pk hex");
-    let mut pk_arr = [0u8; 32]; pk_arr.copy_from_slice(&pk_bytes);
-    let collector_vk = VerifyingKey::from_bytes(&pk_arr).expect("collector vk");
-    let sig_bytes = hex_bytes(public["collector_signature"].as_str().unwrap(), 64).expect("signature hex");
-    let mut sig_arr = [0u8; 64]; sig_arr.copy_from_slice(&sig_bytes);
-    let sig = Signature::from_bytes(&sig_arr);
-    let attestation = format!(
-        "{}|{}|{}|{}|{}", commitment_hex,
-        public["policy_id"].as_u64().unwrap(), public["session_id"].as_u64().unwrap(),
-        public["nonce"].as_u64().unwrap(), public["collector_id"].as_u64().unwrap(),
-    ).into_bytes();
-    let t_sig = Instant::now();
-    let sig_ok = collector_vk.verify(&attestation, &sig).is_ok();
-    let sig_verify_ms = t_sig.elapsed().as_millis();
-    assert!(sig_ok, "collector signature must verify");
-
-    // VK rebuilt from public fixed template only; no graph, no witness.
     let params = Params::<vesta::Affine>::new(k);
     let t_vk = Instant::now();
     let vk = keygen_vk(&params, &IfcCircuit::template(cap)).expect("keygen_vk fixed template");
-    let vk_rebuild_ms = t_vk.elapsed().as_millis();
-    assert_eq!(setup["vk_digest"].as_str().unwrap(), to_hex_bytes(&vk_digest(&vk)),
-        "verifier VK does not match setup-pinned VK");
+    result["vk_rebuild_ms"] = json!(t_vk.elapsed().as_millis());
+    if setup["vk_digest"].as_str().unwrap() != to_hex_bytes(&vk_digest(&vk)) {
+        finish_verify(out, result, Some("verifier VK does not match setup digest"));
+        return;
+    }
 
     let inst_refs: Vec<&[F]> = vec![&instance[..]];
     let all_instances: Vec<&[&[F]]> = vec![&inst_refs];
     let t_verify = Instant::now();
-    verify_proof(&params, &vk, SingleVerifier::new(&params), &all_instances,
-        &mut Blake2bRead::init(&proof[..])).expect("verify_proof");
-    let pure_verify_ms = t_verify.elapsed().as_millis();
+    let proof_ok = verify_proof(&params, &vk, SingleVerifier::new(&params), &all_instances,
+        &mut Blake2bRead::init(&proof[..])).is_ok();
+    result["pure_verify_ms"] = json!(t_verify.elapsed().as_millis());
+    if !proof_ok {
+        finish_verify(out, result, Some("verify_proof rejected"));
+        return;
+    }
 
     let mut bad = instance.clone();
     bad[3] += F::ONE;
@@ -923,23 +1286,13 @@ fn verify(setup_path: &str, proof_path: &str, public_path: &str, out: &str) {
     let bad_all: Vec<&[&[F]]> = vec![&bad_refs];
     let wrong_nonce_rejected = verify_proof(&params, &vk, SingleVerifier::new(&params), &bad_all,
         &mut Blake2bRead::init(&proof[..])).is_err();
-    assert!(wrong_nonce_rejected);
-
-    let result = json!({
-        "schema": SCHEMA,
-        "cap": cap,
-        "k": k,
-        "sig_verify_ms": sig_verify_ms,
-        "vk_rebuild_ms": vk_rebuild_ms,
-        "pure_verify_ms": pure_verify_ms,
-        "wrong_nonce_rejected": wrong_nonce_rejected,
-        "collector_signature_verified": true,
-        "verifier_read_graph": false,
-        "verifier_called_keygen_vk_on_witness": false,
-        "note": "pure_verify_ms excludes VK rebuild and signature verification."
-    });
-    fs::write(out, serde_json::to_vec_pretty(&result).unwrap()).expect("write verify result");
-    println!("{}", serde_json::to_string(&result).unwrap());
+    result["wrong_nonce_rejected"] = json!(wrong_nonce_rejected);
+    if !wrong_nonce_rejected {
+        finish_verify(out, result, Some("wrong nonce was not rejected"));
+        return;
+    }
+    result["accepted"] = json!(true);
+    finish_verify(out, result, None);
 }
 
 fn selftest(cap: usize) {
@@ -989,6 +1342,12 @@ fn selftest(cap: usize) {
         &Signature::from_bytes(&bad_sig)).is_err();
     assert!(wrong_sig_rejected);
 
+    let without_witnesses_keeps_cap =
+        IfcCircuit::template(cap).without_witnesses().witness.as_ref().unwrap().cap == cap;
+    assert!(without_witnesses_keeps_cap, "without_witnesses must preserve cap");
+    let collector_id_stable = collector_id == collector_id_from_key_bytes(&vk_c.to_bytes());
+    assert!(collector_id_stable);
+
     let invalid_json = if mock_skipped { JsonValue::Null } else { json!(invalid_rejected) };
     let good_json = if mock_skipped { JsonValue::Null } else { json!(good_satisfied) };
     println!("{}", json!({
@@ -998,13 +1357,15 @@ fn selftest(cap: usize) {
         "wrong_signature_rejected": wrong_sig_rejected,
         "blind_changes_commitment": true,
         "vk_graph_independent": vk_independent,
+        "without_witnesses_keeps_cap": without_witnesses_keeps_cap,
+        "collector_id_rule_stable": collector_id_stable,
     }).to_string());
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 3 {
-        eprintln!("usage: {} setup|prove|verify|selftest ...", args[0]);
+        eprintln!("usage: {} setup|prove|verify|selftest|attack|prove-attack ...", args[0]);
         std::process::exit(2);
     }
     match args[1].as_str() {
@@ -1013,17 +1374,25 @@ fn main() {
             setup(args[2].parse().expect("cap"), &args[3]);
         }
         "prove" => {
-            if args.len() < 8 { eprintln!("prove <cap> <density> <seed> <setup.json> <proof.bin> <public.json>"); std::process::exit(2); }
+            if args.len() < 9 { eprintln!("prove <cap> <density> <seed> <setup.json> <proof.bin> <public.json> <meta.json>"); std::process::exit(2); }
             prove(args[2].parse().expect("cap"), &args[3], args[4].parse().expect("seed"),
-                &args[5], &args[6], &args[7]);
+                &args[5], &args[6], &args[7], &args[8]);
         }
         "verify" => {
-            if args.len() < 6 { eprintln!("verify <setup.json> <proof.bin> <public.json> <result.json>"); std::process::exit(2); }
-            verify(&args[2], &args[3], &args[4], &args[5]);
+            if args.len() < 7 { eprintln!("verify <setup.json> <allowlist.json> <proof.bin> <public.json> <result.json>"); std::process::exit(2); }
+            verify(&args[2], &args[3], &args[4], &args[5], &args[6]);
         }
         "selftest" => {
             if args.len() < 3 { eprintln!("selftest <cap>"); std::process::exit(2); }
             selftest(args[2].parse().expect("cap"));
+        }
+        "attack" => {
+            if args.len() < 3 { eprintln!("attack <cap>"); std::process::exit(2); }
+            attack_suite(args[2].parse().expect("cap"));
+        }
+        "prove-attack" => {
+            if args.len() < 7 { eprintln!("prove-attack <cap> <case> <setup.json> <proof.bin> <public.json>"); std::process::exit(2); }
+            prove_attack(args[2].parse().expect("cap"), &args[3], &args[4], &args[5], &args[6]);
         }
         other => { eprintln!("unknown command {other}"); std::process::exit(2); }
     }

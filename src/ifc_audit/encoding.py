@@ -54,7 +54,6 @@ class GraphEncoding:
             "depth": self.depth,
             "leaf_count": self.leaf_count,
             "root": hex(self.root),
-            "blind": hex(self.blind),
             "commitment": hex(self.commitment),
         }
 

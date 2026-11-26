@@ -1,0 +1,7 @@
+{
+  "active_edges": 50,
+  "cap": 50,
+  "density": "mid",
+  "note": "Benchmark-private metadata; never part of proof public inputs.",
+  "schema": "ifc-fixed-v1"
+}

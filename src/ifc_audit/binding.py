@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
@@ -52,12 +53,23 @@ def generate_collector_key() -> Ed25519PrivateKey:
     return Ed25519PrivateKey.generate()
 
 
+def collector_id_from_public_key_bytes(raw: bytes) -> int:
+    """Canonical rule shared with Rust.
+
+    collector_id = big-endian u64 of SHA256(raw public key)[0..8] & (2^63 - 1).
+    """
+    if len(raw) != 32:
+        raise ValueError("Ed25519 public key must be 32 raw bytes")
+    digest = hashlib.sha256(raw).digest()
+    return int.from_bytes(digest[:8], "big") & ((1 << 63) - 1)
+
+
 def collector_id_from_public_key(key: Ed25519PublicKey) -> int:
     raw = key.public_bytes(
         encoding=serialization.Encoding.Raw,
         format=serialization.PublicFormat.Raw,
     )
-    return int.from_bytes(raw[:32], "big") & ((1 << 255) - 1)
+    return collector_id_from_public_key_bytes(raw)
 
 
 def sign_attestation(key: Ed25519PrivateKey, ctx: BindingContext) -> bytes:

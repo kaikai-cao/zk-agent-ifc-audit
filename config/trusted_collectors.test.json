@@ -1,0 +1,10 @@
+{
+  "schema": "collector-allowlist-v1",
+  "note": "Deterministic public test fixture only; not a production trust root. The private key is 0x11 repeated 32 times and must never be used outside tests.",
+  "collectors": [
+    {
+      "collector_id": 1205390390791845139,
+      "collector_public_key": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+    }
+  ]
+}
