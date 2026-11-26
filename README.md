@@ -13,7 +13,8 @@ Zero-Knowledge Auditing of Information-Flow Compliance in LLM Agent Sessions.
 | Phase 0 | 研究问题、安全模型、相关工作、关系定义、承诺/来源、实验计划、决策门 | 完成 |
 | Phase 1A | 普通程序参考模型 + A–G 反例/正例测试 + BFS/DFS 一致性 | 完成 |
 | Phase 1B（基线 `a5acdc5`） | Halo2 固定规模原型（50/100/200 事件）与实测 | 完成；已被 Phase 1B.1 审查出固定电路/独立验证/承诺隐藏/计时口径问题 |
-| Phase 1B.1（分支 `phase1b1-fixed-verifier`） | 固定电路、图无关 VK、独立验证者、盲化承诺、计时分离 | 见 `experiments/phase1b1/` 与 `docs/DECISION_GATE.md` |
+| Phase 1B.1（分支 `phase1b1-fixed-verifier`） | 固定电路、图无关 VK、独立验证者、盲化承诺、计时分离 | soundness 已被 1B.1.2 收窄重测；原始结果保留 |
+| Phase 1B.1.2（分支 `phase1b1-2-soundness`） | 承诺 preimage 与谓词字段绑定、crossbar 首行零约束、采集器 allowlist、OS CSPRNG blind | cap=50 工程实现 PASS；研究状态仍 CONDITIONAL HOLD |
 | 基线 | Plaintext checker / Commitment+signature / Halo2 ZK | 完成（见 `experiments/baselines/`） |
 
 **裁决：CONDITIONAL HOLD** —— 工程协议修复后技术可行性 PASS，但研究/项目 GO 仍未成立，暂停 Halo2 扩展。详见 `docs/DECISION_GATE.md`。本仓库是一个研究假设检验，不预设项目一定值得继续。
@@ -28,6 +29,8 @@ Phase 1B.1 明确不宣称：独立密码学创新、形式化安全证明、采
 - `halo2/`：Phase 1B.1 固定电路与 setup/prove/verify 独立入口（Rust / Pallas / Poseidon）。
 - `experiments/phase1b/`：Phase 1B 基线实测（保留，不覆盖）。
 - `experiments/phase1b1/`：固定电路与独立验证者实测、setup/proof/public/verify 产物。
+- `experiments/phase1b1_2/`：soundness 修复前后攻击用例、cap=50 正向/负向实测与性能口径。
+- `config/trusted_collectors.test.json`：仅用于测试的独立采集器 allowlist。
 - `experiments/baselines/`：三类基线的对照脚本与结果。
 - `scripts/`：一键复现入口。
 
@@ -40,15 +43,25 @@ PYTHONPATH=src:. python -m pytest tests/test_phase1a.py -q
 # 参考模型自检 + 基线
 PYTHONPATH=src:. python scripts/run_baselines.py
 
-# Phase 1B.1（需要 Rust/cargo；首次会编译依赖）
+# Phase 1B.1.2（需要 Rust/cargo；只跑 cap=50）
 cd halo2 && cargo build --release --offline && cd ..
-python scripts/run_phase1b1.py
+python scripts/run_phase1b1_2.py
 
-# 单进程手动流程（cap=50 示例）
-./halo2/target/release/zk-agent-ifc-audit-halo2.exe setup 50 experiments/phase1b1/raw/setup50.json
+# 手动流程（cap=50 示例）
+./halo2/target/release/zk-agent-ifc-audit-halo2.exe setup 50 experiments/phase1b1_2/raw/setup50.json
 ./halo2/target/release/zk-agent-ifc-audit-halo2.exe selftest 50
-./halo2/target/release/zk-agent-ifc-audit-halo2.exe prove 50 low 2026112601   experiments/phase1b1/raw/setup50.json   experiments/phase1b1/raw/cap50_low.proof   experiments/phase1b1/raw/cap50_low.public.json
-./halo2/target/release/zk-agent-ifc-audit-halo2.exe verify   experiments/phase1b1/raw/setup50.json   experiments/phase1b1/raw/cap50_low.proof   experiments/phase1b1/raw/cap50_low.public.json   experiments/phase1b1/raw/cap50_low.verify.json
+./halo2/target/release/zk-agent-ifc-audit-halo2.exe attack 50
+./halo2/target/release/zk-agent-ifc-audit-halo2.exe prove 50 low 2026112601 \
+  experiments/phase1b1_2/raw/setup50.json \
+  experiments/phase1b1_2/raw/cap50_low.proof \
+  experiments/phase1b1_2/raw/cap50_low.public.json \
+  experiments/phase1b1_2/raw/cap50_low.meta.json
+./halo2/target/release/zk-agent-ifc-audit-halo2.exe verify \
+  experiments/phase1b1_2/raw/setup50.json \
+  config/trusted_collectors.test.json \
+  experiments/phase1b1_2/raw/cap50_low.proof \
+  experiments/phase1b1_2/raw/cap50_low.public.json \
+  experiments/phase1b1_2/raw/cap50_low.verify.json
 ```
 
 Phase 1B 使用 `halo2_proofs = 0.4.0`、`halo2_gadgets = 0.6.0`、`halo2_poseidon = 0.2.0`、`pasta_curves = 0.6.0`（Pallas base field，Poseidon P128Pow5T3, width 3/rate 2）。不引入递归证明；不把 LLM 推理放进电路。

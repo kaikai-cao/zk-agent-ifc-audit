@@ -1,0 +1,17 @@
+{
+  "density": "high",
+  "active_edges": 100,
+  "proof_bytes": 8096,
+  "prove_ms": 4547,
+  "pure_verify_ms": 30,
+  "vk_rebuild_ms": 1319,
+  "sig_verify_ms": 0,
+  "params_gen_ms": 5410,
+  "vk_gen_ms": 6579,
+  "pk_gen_ms": 2280,
+  "prove_wall_ms": 13651,
+  "verify_wall_ms": 7454,
+  "prove_peak_mb": 2262.31,
+  "verify_peak_mb": 150.82,
+  "accepted": true
+}

@@ -1,0 +1,17 @@
+[
+  {
+    "case": "wrong_nonce",
+    "accepted": false,
+    "reason": "verify_proof rejected"
+  },
+  {
+    "case": "forged_public_key",
+    "accepted": false,
+    "reason": "collector signature rejected"
+  },
+  {
+    "case": "wrong_collector_id",
+    "accepted": false,
+    "reason": "collector_id not in trusted allowlist"
+  }
+]

@@ -9,7 +9,8 @@
 | Phase 0 | 仓库创建、八份文档齐全、四类概念分离、必需相关工作清单 | **PASS（附 E 项勘误）** | `docs/` 八文件；`RELATED_WORK.md` 已纠正 Distributed Sentinel §4.8.1 |
 | Phase 1A | 参考模型正确、A–G 全过、闭包与 BFS/DFS 一致、反例解释完整 | **PASS** | `tests/test_phase1a.py`：13 passed（含 3 个盲化承诺测试） |
 | Phase 1B（基线 `a5acdc5`） | 证明/验证通过、50/100/200 实测、未冒充安全证明 | **重新界定为 PASS（仅本地具体图证明/验证）** | `experiments/phase1b/` 保留未改；原“独立第三方验证”表述撤销 |
-| Phase 1B.1 | 固定电路、图无关 VK、独立验证者、盲化承诺、计时分离 | **PASS（技术协议；见第 5 节限制）** | `experiments/phase1b1/RESULTS.md` + `selftest*.json` |
+| Phase 1B.1 | 固定电路、图无关 VK、独立验证者、盲化承诺、计时分离 | **PASS（仅固定形状/接口；soundness 已被 1B.1.2 收窄，见第 7 节）** | `experiments/phase1b1/RESULTS.md` + `selftest*.json` |
+| Phase 1B.1.2 | 承诺 preimage 与谓词字段的电路绑定、crossbar 初始累加器、采集器身份、盲化接口 | **PASS（仅当前 cap=50 工程实现；研究状态不变）** | `experiments/phase1b1_2/RESULTS.md` + `ATTACK_CASES.md` |
 
 ### 为什么重新界定 Phase 1B
 基线静态审查发现四个优先于创新性的问题，均已在 1B.1 处理或显式记录：
@@ -79,3 +80,32 @@
 - 不增加递归证明、动态图规模、更多标签、declassification 或 LLM 推理入电路；
 - 不声称形式化安全证明、exactly-once、跨存储原子性或承诺的统计隐藏性证明；
 - 不建 PR，不改变任何其他冻结项目。
+
+## 7. Phase 1B.1.2 复核（2026-11-26）
+
+1B.1 的 PASS 只覆盖“固定电路形状、图无关 VK、独立验证者接口、计时分离”。静态审查与恶意 witness 测试表明，1B.1 电路没有把承诺 preimage 与谓词检查字段绑定：修复前 `node_tl_mismatch`、`node_position_mismatch`、`edge_idx_mismatch`、四类 domain 篡改、empty padding 篡改以及 `crossbar_prev_dst` 均可通过 MockProver。因而 1B.1 的 soundness 声明作废，并由本阶段收窄重测。
+
+### F1–F13 逐条判定
+
+| # | 标准 | 判定 | 证据 |
+| --- | --- | --- | --- |
+| F1 | `node_type/label` 与节点承诺 preimage 有电路约束 | **PASS** | `q_node` gate：`leaf_tl = 2*type + label` |
+| F2 | 节点位置有电路约束 | **PASS** | `q_node` gate：`node_index = node_pos` 固定列 |
+| F3 | `src/dst` 与边承诺 preimage 有电路约束 | **PASS** | `q_edge` gate：`leaf_idx = src*cap_fixed + dst`；crossbar 继续约束范围与 `S[src]/S[dst]` |
+| F4 | Poseidon domain 与 padding 输入受约束 | **PASS** | `q_domain` gate 绑定固定域常量；`q_zero` gate 固定 empty padding 为 0 |
+| F5 | crossbar 六个初始累加器强制为零 | **PASS** | `q_first` gate ×6；`selftest50.json` 合规 witness 仍满足 |
+| F6 | `without_witnesses` 保持 cap | **PASS** | `selftest50.json`: `without_witnesses_keeps_cap=true` |
+| F7 | 五类恶意 witness 测试被拒绝 | **PASS** | `raw/pre_fix_attacks.json` → `raw/post_fix_attacks.json`；`ATTACK_CASES.md` |
+| F8 | 正向真实证明与验证成功 | **PASS** | cap=50 low/mid/high 三例 `accepted=true` |
+| F9 | 负向真实证明不能被接受 | **PASS** | `raw/proof_layer_negatives.json`：四例 `create_proof_ok=true`、`verify_accepted=false` |
+| F10 | 采集器公钥来自独立信任根，ID 规则统一 | **PASS（测试 allowlist 范围）** | `config/trusted_collectors.test.json`；Rust/Python 同一 SHA-256 前缀派生；三类身份负向测试均拒绝 |
+| F11 | blind 不公开，public inputs 无多余图规模元数据 | **PASS** | OS CSPRNG blind；`public.json` 无 blind/density/active_edges；meta 单独落盘 |
+| F12 | cap=50 性能口径正确 | **PASS** | `RESULTS.md` 分列 setup 三项、`prove_ms`、纯验证、VK 重建、验签、进程 wall/peak |
+| F13 | Python 全部测试通过 | **PASS** | 15 passed（原 13 + 2 个 1B.1.2 测试） |
+
+### 诚实边界
+
+- F1–F13 只说明当前 Trace-IFC 电路关系具备更可信的工程实现；研究状态仍为 **CONDITIONAL HOLD**，不自动构成 GO 或论文创新。
+- 修复前攻击复现表明 1B.1 的核心 soundness 命题不成立；修复后反例被拒不等价于形式化安全证明。
+- `prove` 仍重新调用 `keygen_with_k()`；setup 时间不是可复用缓存。`pure_verify_ms` 不是端到端验证时间。
+- 只跑 cap=50；不作为规模可扩展性证据。

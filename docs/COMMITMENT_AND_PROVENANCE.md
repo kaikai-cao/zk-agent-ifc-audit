@@ -86,3 +86,28 @@ attestation = (C, policy_id, session_id, nonce, collector_id)
 普通 graph commitment + signature 也能绑定 root，但验证者要么重算谓词（需拿到图），要么信任签名者的判定。本项目把“重算谓词”改成“验证盲化承诺隐藏图上的证明”，新增的是**不暴露图的公开可验证性**；采集器完整性信任并未减少。
 
 残留公开元数据仍可能泄漏：cap/edge_cap、密度/活动边数、策略 ID、会话 ID、nonce、采集器 ID、证明大小与计时，以及验证者自身已知的上下文。盲化不隐藏这些字段，也不隐藏“存在一次合规判定”这一事实。
+
+## 8. Phase 1B.1.2 修订
+
+1B.1 的承诺公式未变，但新增了以下电路约束，使公式中的字段不再是自由 advice：
+
+```
+node_tl_i   = 2 * node_type_i + label_i
+node_index_i = fixed_row_position_i
+edge_idx_j  = src_j * cap_fixed + dst_j
+domain_cell in {NODE, EDGE, EMPTY, BLIND} + cap  (fixed-column pinned)
+empty_padding_input = 0
+crossbar block prev_* at row 0 = 0
+```
+
+`src/dst` 的范围和 `S[src]/S[dst]` 继续由固定 one-hot crossbar 与 copy constraint 约束；`q_first` 防止证明者通过非零初始累加器伪造查表结果。修复前的五类拆字段攻击见 `experiments/phase1b1_2/ATTACK_CASES.md`。
+
+来源认证方面，`collector_id` 现在统一定义为：
+
+```
+collector_id = big_endian_u64(SHA256(raw_ed25519_public_key)[0..8]) & (2^63 - 1)
+```
+
+Rust 与 Python 使用同一规则。验证者从 `config/trusted_collectors.test.json`（仅测试信任根）按 `collector_id` 查找公钥，重新派生 ID 后验签；`public.json` 中任何自称公钥字段均被忽略。正式部署必须替换该 allowlist。
+
+盲化方面，正式证明路径由操作系统 CSPRNG 采样 254-bit blind，不再从 CLI seed 派生。`public.json` 和 `GraphEncoding.as_dict()` 均不输出 blind；`density` 与 `active_edges` 只进入 benchmark 私有 `meta.json`，不属于证明 public inputs。这里只说明随机化接口按预期工作，不声称已形式化证明统计隐藏性。

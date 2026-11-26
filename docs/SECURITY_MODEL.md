@@ -71,3 +71,15 @@ ZKP 不证明工具调用真实发生、调用参数未被篡改、结果未被�
 ## 5. 对“签名基线”的诚实对照
 
 明文图检查器与承诺+签名基线都把图交给验证者（或至少由验证者重算谓词）；它们减少的是“证明计算信任”，不减少图内容披露。ZK 基线减少的是“验证者看到图或信任证明者给的图”，但增加证明生成成本，并且不减少采集器信任。详细成本见 `experiments/baselines/`。
+
+## 6. Phase 1B.1.2 后的对手模型修正
+
+修复前的电路允许恶意证明者把“承诺 preimage advice”和“谓词检查 advice”拆开：节点类型/标签、节点位置、边端点、Poseidon 域、empty padding 以及 crossbar 初始累加器均可被分别操纵。由此得到的结论是：1B.1 的“承诺图满足 Trace-IFC”声明在电路层并未被建立，而不是只存在实现细节问题。
+
+修复后：
+
+- 恶意证明者必须让同一组受约束字段同时满足闭包谓词与 Merkle/Poseidon 承诺编码；cap=50 的五类恶意 witness 与四类真实负向证明均被拒。
+- verifier 不读取 `public.json` 自称的采集器公钥，而从独立 allowlist 取公钥；`collector_id` 由公钥按固定 SHA-256 前缀规则重新计算。测试 allowlist 中的确定性密钥仅为公开 fixture。
+- blind 由 OS CSPRNG 在证明进程内采样，不经过 CLI seed，也不写入 `public.json`；`density`/`active_edges` 仅进入 benchmark 私有 meta 文件。
+
+仍未解决：采集器是否漏记/错标、策略版本是否权威、运行时事件是否真实发生、nonce 是否由协议层唯一消费。零知识性与盲化承诺也不隐藏 `cap`、策略 ID、会话 ID、nonce、采集器 ID 以及“存在一次合规证明”这一事实；本阶段不声称承诺的统计隐藏性形式化证明。

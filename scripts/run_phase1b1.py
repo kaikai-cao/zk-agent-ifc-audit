@@ -28,6 +28,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BIN = ROOT / "halo2" / "target" / "release" / "zk-agent-ifc-audit-halo2.exe"
 RAW = ROOT / "experiments" / "phase1b1" / "raw"
+ALLOWLIST = ROOT / "config" / "trusted_collectors.test.json"
 ALL_CAPS = [50, 100, 200]
 ARGS = sys.argv[1:]
 REPORT_ONLY = "--report-only" in ARGS
@@ -112,20 +113,23 @@ def main() -> None:
             seed = SEEDS[cap] + idx
             proof_path = RAW / f"cap{cap}_{density}.proof"
             public_path = RAW / f"cap{cap}_{density}.public.json"
+            meta_path = RAW / f"cap{cap}_{density}.meta.json"
             verify_path = RAW / f"cap{cap}_{density}.verify.json"
             print(f"  [prove] cap={cap} density={density}", flush=True)
             prove_run = run_monitored([
                 str(BIN), "prove", str(cap), density, str(seed),
-                str(setup_path), str(proof_path), str(public_path),
+                str(setup_path), str(proof_path), str(public_path), str(meta_path),
             ])
             print(f"  [verify] cap={cap} density={density}", flush=True)
             verify_run = run_monitored([
-                str(BIN), "verify", str(setup_path), str(proof_path),
+                str(BIN), "verify", str(setup_path), str(ALLOWLIST), str(proof_path),
                 str(public_path), str(verify_path),
             ])
             public = json.loads(public_path.read_text(encoding="utf-8"))
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
             verified = json.loads(verify_path.read_text(encoding="utf-8"))
             row = dict(public)
+            row.update(meta)
             row.update(verified)
             row.update({
                 "params_gen_ms": setup_data["params_gen_ms"],

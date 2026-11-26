@@ -1,0 +1,14 @@
+{
+  "cap": 50,
+  "circuit_version": "phase1b1-2-soundness-v1",
+  "collector_id": 1205390390791845139,
+  "collector_public_key_claimed": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+  "collector_signature": "669dcb7e218e57936015072461f117d7a59438b27ec44d72bb1e62087e82c0cdc12d8dd7651078848660cdea5f98d67d010d5f5d6c7bf33655117142ab0ac90b",
+  "commitment": "3be0bbce56c06fa1fe13e92d597d7d1039101dfc76d8e396dfafd127897f18c8",
+  "k": 15,
+  "nonce": 4242,
+  "policy_id": 7,
+  "proof_bytes": 8096,
+  "schema": "ifc-fixed-v1",
+  "session_id": 20261126
+}
