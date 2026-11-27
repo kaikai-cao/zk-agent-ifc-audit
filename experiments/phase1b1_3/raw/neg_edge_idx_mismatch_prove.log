@@ -1,0 +1,7 @@
+command: D:\Research\zk-agent-ifc-audit\halo2\target\release\zk-agent-ifc-audit-halo2.exe prove-attack 50 edge_idx_mismatch D:\Research\zk-agent-ifc-audit\experiments\phase1b1_3\raw\setup50.json D:\Research\zk-agent-ifc-audit\experiments\phase1b1_3\raw\neg_edge_idx_mismatch.proof D:\Research\zk-agent-ifc-audit\experiments\phase1b1_3\raw\neg_edge_idx_mismatch.public.json
+exit_code: 0
+wall_ms: 23961
+peak_mb: 2260.04
+--- stdout ---
+{"case":"edge_idx_mismatch","create_proof_ok":true,"proof_bytes":8096}
+--- stderr ---

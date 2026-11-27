@@ -111,3 +111,30 @@ collector_id = big_endian_u64(SHA256(raw_ed25519_public_key)[0..8]) & (2^63 - 1)
 Rust 与 Python 使用同一规则。验证者从 `config/trusted_collectors.test.json`（仅测试信任根）按 `collector_id` 查找公钥，重新派生 ID 后验签；`public.json` 中任何自称公钥字段均被忽略。正式部署必须替换该 allowlist。
 
 盲化方面，正式证明路径由操作系统 CSPRNG 采样 254-bit blind，不再从 CLI seed 派生。`public.json` 和 `GraphEncoding.as_dict()` 均不输出 blind；`density` 与 `active_edges` 只进入 benchmark 私有 `meta.json`，不属于证明 public inputs。这里只说明随机化接口按预期工作，不声称已形式化证明统计隐藏性。
+
+## 9. 可重建性与隐私边界（Phase 1B.1.3 / D）
+
+任务包 D 的八问逐项核查（证据见 `scripts/run_phase1b1_3.py`、`halo2/src/main.rs`、`experiments/phase1b1_3/raw/`）：
+
+1. **公开 seed 足以重建实验图**：是。benchmark 用 `SEEDS={low:2026112601, mid:…02, high:…03}` + `make_compliant_witness(density, seed)` 生成合成图；公开代码 + 公开 seed 可重建相同图。
+2. **公开代码可重建实验输入**：是，除 blind 外。图结构、节点/边、policy/session/nonce 均由 seed 与代码确定。
+3. **blind 真正由 OS CSPRNG 产生**：是。prove 进程内 `random_blind()` 用 `SysRng.try_fill_bytes`（rand 0.10 系统随机源），清高两位保证域内；不经 CLI seed。
+4. **blind 写入 public/日志**：否。`public.json` 无 blind 字段；`verify` 日志与 proof public inputs 都不含 blind。private meta 只记 density/active_edges。
+5. **private meta 进入 Git**：否。`meta.json` 只落在实验 raw 目录，不作为证明输入；正式部署应确保私有元数据不进公开渠道。
+6. **commitment 是否公开**：是。`C = H(BLIND+cap, root_G, blind)` 作为 proof public input 第 0 项公开；`root_G` 与 blind 不公开。
+7. **公开字段泄露的元数据**：`cap/k`、电路版本、policy_id、session_id、nonce、collector_id、proof 大小、计时，以及"存在一次合规判定"这一事实。盲化不隐藏这些。
+8. **字段采样安全性**：blind 为 254-bit 域元素（清 2 位后约 252 bit 熵），单次采样；此处只描述实现，不把"采样足够"等同于"已证明 hiding"。
+
+### 四分法（禁止 A→D 越级）
+
+| 级别 | 命题 | 本阶段状态 |
+| --- | --- | --- |
+| A | 代码接口具备随机 blind | **已实现并测试**（OS CSPRNG、public 不泄露、改 blind 改变 C） |
+| B | benchmark 合成图可由公开 seed 重建 | **已实现并核查** |
+| C | commitment 在给定假设下可能具备 hiding 性质 | **推论，未证明**（依赖 Poseidon 输入不可逆与 blind 均匀性假设） |
+| D | 已形式化证明 commitment hiding | **未做**；本阶段不声称 |
+
+### 隐私结论
+
+本阶段所有实验使用**公开合成数据**，不是真实 Agent 会话。不得把合成图实验描述为真实会话隐私实验；不得把随机 blind 说成已证明 hiding。残留元数据泄露（第 7 问）与"存在合规判定"事实均未隐藏。详见 `experiments/phase1b1_3/RESULTS.md` §6。
+

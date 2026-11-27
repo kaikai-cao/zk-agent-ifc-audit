@@ -1065,28 +1065,38 @@ fn load_setup(path: &str) -> JsonValue {
 }
 
 fn setup(cap: usize, out: &str) {
-    let t_params = Instant::now();
+    // Timing boundaries (Phase 1B.1.3 B1):
+    //   params_gen_ms  = only Params::new(k) on the successful k
+    //   vk_gen_ms      = only keygen_vk() on that Params
+    //   pk_gen_ms      = only keygen_pk()
+    // There is no discarded "probe" Params any more.  keygen_vk may require a
+    // larger k; in that case Params::new is naturally re-run for the new k, and
+    // we record the successful attempt's two timings only.  For cap=50 the
+    // first attempt succeeds, so Params is generated exactly once.
+    let t_setup = Instant::now();
     let mut k = k_for_cap(cap);
-    let params_probe = Params::<vesta::Affine>::new(k);
-    let params_ms = t_params.elapsed().as_millis();
     let template = IfcCircuit::template(cap);
-    let t_vk = Instant::now();
-    let (params, vk) = loop {
+    let (params, vk, params_ms, vk_ms, attempts) = loop {
+        let t_params = Instant::now();
         let p = Params::<vesta::Affine>::new(k);
+        let p_ms = t_params.elapsed().as_millis();
+        let t_vk = Instant::now();
         match keygen_vk(&p, &template) {
-            Ok(v) => break (p, v),
+            Ok(v) => {
+                let v_ms = t_vk.elapsed().as_millis();
+                break (p, v, p_ms, v_ms, k - k_for_cap(cap) + 1);
+            }
             Err(_) => {
                 k += 1;
                 if k > 22 { panic!("keygen_vk out of rows at k=22"); }
             }
         }
     };
-    let vk_ms = t_vk.elapsed().as_millis();
     let t_pk = Instant::now();
     let pk = keygen_pk(&params, vk.clone(), &template).expect("keygen_pk");
     let pk_ms = t_pk.elapsed().as_millis();
     let vk_digest_hex = to_hex_bytes(&vk_digest(&vk));
-    let _ = (params_probe, vk, pk);
+    let _ = pk;
 
     let result = json!({
         "schema": SCHEMA,
@@ -1099,7 +1109,9 @@ fn setup(cap: usize, out: &str) {
         "params_gen_ms": params_ms,
         "vk_gen_ms": vk_ms,
         "pk_gen_ms": pk_ms,
-        "note": "halo2_proofs 0.4 exposes no VK serialization API; verifier rebuilds the graph-independent fixed-template VK and pins it via vk_hash. This is an explicit deviation from an opaque serialized VK."
+        "setup_inner_ms": t_setup.elapsed().as_millis(),
+        "keygen_vk_attempts": attempts,
+        "note": "params_gen_ms=Params::new only; vk_gen_ms=keygen_vk only; pk_gen_ms=keygen_pk only. halo2_proofs 0.4 exposes no VK serialization API; verifier rebuilds the graph-independent fixed-template VK and pins it via vk_hash (pinned-build prototype digest)."
     });
     fs::write(out, serde_json::to_vec_pretty(&result).unwrap()).expect("write setup");
     println!("{}", serde_json::to_string(&result).unwrap());
@@ -1122,16 +1134,32 @@ fn prove(cap: usize, density: &str, seed: u64, setup_path: &str, proof_path: &st
     let k = setup["k"].as_u64().unwrap() as u32;
     assert_eq!(setup["vk_hash"].as_str().unwrap(), to_hex(expected_vk_hash(cap, k)), "vk hash mismatch");
 
+    let t_wit = Instant::now();
     let (sk, _vk_collector, collector_id) = make_collector([0x11; 32]);
     let mut w = make_compliant_witness(cap, density, seed, collector_id);
     w.blind = random_blind();
     let c = commitment(&w);
     let instance = vec![c, f(w.policy_id), f(w.session_id), f(w.nonce), f(w.collector_id)];
     let sig = sk.sign(&canonical_attestation_bytes(c, &w));
+    let witness_generation_ms = t_wit.elapsed().as_millis();
 
-    let (params, _, pk) = keygen_with_k(cap, k);
-    assert_eq!(setup["vk_digest"].as_str().unwrap(), to_hex_bytes(&vk_digest(pk.get_vk())),
+    // Timing boundaries (Phase 1B.1.3 B2): each key generation is timed
+    // separately.  This process regenerates Params/VK/PK on every prove call;
+    // it does NOT reuse a cached setup.  report_wall/peak are added by the
+    // harness that spawns this process.
+    let t_params = Instant::now();
+    let params = Params::<vesta::Affine>::new(k);
+    let params_generation_ms = t_params.elapsed().as_millis();
+    let template = IfcCircuit::template(cap);
+    let t_vk = Instant::now();
+    let vk = keygen_vk(&params, &template).expect("keygen_vk fixed template");
+    let vk_generation_ms = t_vk.elapsed().as_millis();
+    assert_eq!(setup["vk_digest"].as_str().unwrap(), to_hex_bytes(&vk_digest(&vk)),
         "prover VK does not match setup-pinned VK");
+    let t_pk = Instant::now();
+    let pk = keygen_pk(&params, vk, &template).expect("keygen_pk");
+    let pk_generation_ms = t_pk.elapsed().as_millis();
+
     let t0 = Instant::now();
     let inst_refs: Vec<&[F]> = vec![&instance[..]];
     let all_instances: Vec<&[&[F]]> = vec![&inst_refs];
@@ -1139,7 +1167,7 @@ fn prove(cap: usize, density: &str, seed: u64, setup_path: &str, proof_path: &st
     create_proof(&params, &pk, &[IfcCircuit::new(w.clone())], &all_instances,
         rand::make_rng::<StdRng>(), &mut transcript).expect("create_proof");
     let proof = transcript.finalize();
-    let prove_ms = t0.elapsed().as_millis();
+    let create_proof_ms = t0.elapsed().as_millis();
     fs::write(proof_path, &proof).expect("write proof");
 
     let public = json!({
@@ -1153,8 +1181,14 @@ fn prove(cap: usize, density: &str, seed: u64, setup_path: &str, proof_path: &st
         "collector_id": w.collector_id,
         "collector_signature": to_hex_bytes(&sig.to_bytes()),
         "k": k,
-        "prove_ms": prove_ms,
+        "witness_generation_ms": witness_generation_ms,
+        "params_generation_ms": params_generation_ms,
+        "vk_generation_ms": vk_generation_ms,
+        "pk_generation_ms": pk_generation_ms,
+        "create_proof_ms": create_proof_ms,
         "proof_bytes": proof.len(),
+        "keygen_reused_from_setup": false,
+        "note": "prove regenerates Params/VK/PK each call; create_proof_ms is pure create_proof only. prove_wall_ms/prove_peak_mb are measured by the harness around this process."
     });
     fs::write(public_path, serde_json::to_vec_pretty(&public).unwrap()).expect("write public");
     let meta = json!({
@@ -1188,7 +1222,7 @@ fn verify(setup_path: &str, allowlist_path: &str, proof_path: &str, public_path:
         "verifier_read_graph": false,
         "verifier_called_keygen_vk_on_witness": false,
         "collector_key_source": "independent_allowlist",
-        "note": "pure_verify_ms excludes VK rebuild and signature verification."
+        "note": "verify_proof_ms=verify_proof only. params_generation_ms, vk_rebuild_ms, collector_allowlist_lookup_ms, signature_verification_ms are reported separately. verify_wall_ms/verify_peak_mb are measured by the harness around this process."
     });
 
     if setup["schema"].as_str() != Some(SCHEMA)
@@ -1210,8 +1244,10 @@ fn verify(setup_path: &str, allowlist_path: &str, proof_path: &str, public_path:
     result["cap"] = json!(cap);
     result["k"] = json!(k);
 
+    let t_allow = Instant::now();
     let entry = allowlist["collectors"].as_array()
         .and_then(|xs| xs.iter().find(|e| e["collector_id"].as_u64() == Some(cid)));
+    result["collector_allowlist_lookup_ms"] = json!(t_allow.elapsed().as_millis());
     let entry = match entry {
         Some(v) => v,
         None => { finish_verify(out, result, Some("collector_id not in trusted allowlist")); return; }
@@ -1245,7 +1281,8 @@ fn verify(setup_path: &str, allowlist_path: &str, proof_path: &str, public_path:
     ).into_bytes();
     let t_sig = Instant::now();
     let sig_ok = collector_vk.verify(&attestation, &sig).is_ok();
-    result["sig_verify_ms"] = json!(t_sig.elapsed().as_millis());
+    result["signature_verification_ms"] = json!(t_sig.elapsed().as_millis());
+    result["sig_verify_ms"] = result["signature_verification_ms"].clone(); // back-compat alias
     if !sig_ok {
         finish_verify(out, result, Some("collector signature rejected"));
         return;
@@ -1260,7 +1297,9 @@ fn verify(setup_path: &str, allowlist_path: &str, proof_path: &str, public_path:
         f(cid),
     ];
     let proof = fs::read(proof_path).expect("read proof");
+    let t_params = Instant::now();
     let params = Params::<vesta::Affine>::new(k);
+    result["params_generation_ms"] = json!(t_params.elapsed().as_millis());
     let t_vk = Instant::now();
     let vk = keygen_vk(&params, &IfcCircuit::template(cap)).expect("keygen_vk fixed template");
     result["vk_rebuild_ms"] = json!(t_vk.elapsed().as_millis());
@@ -1274,7 +1313,8 @@ fn verify(setup_path: &str, allowlist_path: &str, proof_path: &str, public_path:
     let t_verify = Instant::now();
     let proof_ok = verify_proof(&params, &vk, SingleVerifier::new(&params), &all_instances,
         &mut Blake2bRead::init(&proof[..])).is_ok();
-    result["pure_verify_ms"] = json!(t_verify.elapsed().as_millis());
+    result["verify_proof_ms"] = json!(t_verify.elapsed().as_millis());
+    result["pure_verify_ms"] = result["verify_proof_ms"].clone(); // back-compat alias
     if !proof_ok {
         finish_verify(out, result, Some("verify_proof rejected"));
         return;

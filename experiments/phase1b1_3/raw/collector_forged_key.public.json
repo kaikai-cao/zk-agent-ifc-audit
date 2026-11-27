@@ -1,0 +1,21 @@
+{
+  "cap": 50,
+  "circuit_version": "phase1b1-2-soundness-v1",
+  "collector_id": 1205390390791845139,
+  "collector_signature": "6dc99b8fb6d487488528163261ab4ab7565c6c368cc294f75a01a73ff9c6c92540ba3d81e26551a2a53e27d4de331cece5230864ec491fa14de8c5bb0dd3c303",
+  "commitment": "01fde914c4cf06ae6b95f8955c923dd5d7f4d65f787ca14c4b5dbb86ca86ae3a",
+  "create_proof_ms": 7095,
+  "k": 15,
+  "keygen_reused_from_setup": false,
+  "nonce": 12602,
+  "note": "prove regenerates Params/VK/PK each call; create_proof_ms is pure create_proof only. prove_wall_ms/prove_peak_mb are measured by the harness around this process.",
+  "params_generation_ms": 8164,
+  "pk_generation_ms": 3141,
+  "policy_id": 7,
+  "proof_bytes": 8096,
+  "schema": "ifc-fixed-v1",
+  "session_id": 20261126,
+  "vk_generation_ms": 2257,
+  "witness_generation_ms": 5,
+  "collector_public_key_claimed": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0"
+}

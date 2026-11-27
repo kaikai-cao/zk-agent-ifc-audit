@@ -1,0 +1,7 @@
+command: D:\Research\zk-agent-ifc-audit\halo2\target\release\zk-agent-ifc-audit-halo2.exe prove-attack 50 node_tl_mismatch D:\Research\zk-agent-ifc-audit\experiments\phase1b1_3\raw\setup50.json D:\Research\zk-agent-ifc-audit\experiments\phase1b1_3\raw\neg_node_tl_mismatch.proof D:\Research\zk-agent-ifc-audit\experiments\phase1b1_3\raw\neg_node_tl_mismatch.public.json
+exit_code: 0
+wall_ms: 23061
+peak_mb: 2260.57
+--- stdout ---
+{"case":"node_tl_mismatch","create_proof_ok":true,"proof_bytes":8096}
+--- stderr ---

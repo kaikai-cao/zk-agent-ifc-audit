@@ -1,0 +1,34 @@
+[
+  {
+    "case": "illegal_ifc",
+    "create_proof_ok": true,
+    "proof_bytes": 8096,
+    "create_proof_exit_code": 0,
+    "verify_accepted": false,
+    "reason": "verify_proof rejected"
+  },
+  {
+    "case": "node_tl_mismatch",
+    "create_proof_ok": true,
+    "proof_bytes": 8096,
+    "create_proof_exit_code": 0,
+    "verify_accepted": false,
+    "reason": "verify_proof rejected"
+  },
+  {
+    "case": "edge_idx_mismatch",
+    "create_proof_ok": true,
+    "proof_bytes": 8096,
+    "create_proof_exit_code": 0,
+    "verify_accepted": false,
+    "reason": "verify_proof rejected"
+  },
+  {
+    "case": "crossbar_prev_dst",
+    "create_proof_ok": true,
+    "proof_bytes": 8096,
+    "create_proof_exit_code": 0,
+    "verify_accepted": false,
+    "reason": "verify_proof rejected"
+  }
+]

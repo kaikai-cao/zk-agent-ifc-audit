@@ -1,0 +1,7 @@
+command: D:\Research\zk-agent-ifc-audit\halo2\target\release\zk-agent-ifc-audit-halo2.exe verify D:\Research\zk-agent-ifc-audit\experiments\phase1b1_3\raw\setup50.json D:\Research\zk-agent-ifc-audit\config\trusted_collectors.test.json D:\Research\zk-agent-ifc-audit\experiments\phase1b1_3\raw\neg_illegal_ifc.proof D:\Research\zk-agent-ifc-audit\experiments\phase1b1_3\raw\neg_illegal_ifc.public.json D:\Research\zk-agent-ifc-audit\experiments\phase1b1_3\raw\neg_illegal_ifc.verify.json
+exit_code: 0
+wall_ms: 13646
+peak_mb: 150.88
+--- stdout ---
+{"accepted":false,"cap":50,"collector_allowlist_lookup_ms":0,"collector_key_source":"independent_allowlist","collector_signature_verified":true,"k":15,"note":"verify_proof_ms=verify_proof only. params_generation_ms, vk_rebuild_ms, collector_allowlist_lookup_ms, signature_verification_ms are reported separately. verify_wall_ms/verify_peak_mb are measured by the harness around this process.","params_generation_ms":11309,"pure_verify_ms":50,"reason":"verify_proof rejected","schema":"ifc-fixed-v1","sig_verify_ms":0,"signature_verification_ms":0,"verifier_called_keygen_vk_on_witness":false,"verifier_read_graph":false,"verify_proof_ms":50,"vk_rebuild_ms":2236}
+--- stderr ---

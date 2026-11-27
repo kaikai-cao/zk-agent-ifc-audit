@@ -1,0 +1,32 @@
+[
+  {
+    "case": "legit_allowlist_collector",
+    "accepted": true,
+    "reason": null,
+    "layer": "all"
+  },
+  {
+    "case": "forged_public_key",
+    "accepted": false,
+    "reason": "collector signature rejected",
+    "layer": "allowlist+Ed25519 (claimed key ignored)"
+  },
+  {
+    "case": "wrong_collector_id",
+    "accepted": false,
+    "reason": "collector_id not in trusted allowlist",
+    "layer": "allowlist"
+  },
+  {
+    "case": "wrong_nonce",
+    "accepted": false,
+    "reason": "verify_proof rejected",
+    "layer": "SNARK public input (Ed25519 re-signed)"
+  },
+  {
+    "case": "wrong_signature",
+    "accepted": false,
+    "reason": "collector signature rejected",
+    "layer": "Ed25519 signature"
+  }
+]

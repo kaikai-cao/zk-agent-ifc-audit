@@ -1,0 +1,180 @@
+{
+  "setup": {
+    "cap": 50,
+    "circuit_version": "phase1b1-2-soundness-v1",
+    "edge_cap": 100,
+    "k": 15,
+    "keygen_vk_attempts": 1,
+    "note": "params_gen_ms=Params::new only; vk_gen_ms=keygen_vk only; pk_gen_ms=keygen_pk only. halo2_proofs 0.4 exposes no VK serialization API; verifier rebuilds the graph-independent fixed-template VK and pins it via vk_hash (pinned-build prototype digest).",
+    "params_gen_ms": 5647,
+    "pk_gen_ms": 2729,
+    "schema": "ifc-fixed-v1",
+    "setup_inner_ms": 9776,
+    "vk_digest": "09a7d83d3a397ec5cece1afb4729738b7f419a8cb995959dcea597a8375afa9f",
+    "vk_gen_ms": 1399,
+    "vk_hash": "3d84086f4e912727139afb9011d32431411c96c9c500b45f2bf7abc7b75a79b8",
+    "setup_wall_ms": 9894,
+    "setup_peak_mb": 789.93
+  },
+  "perf": [
+    {
+      "density": "low",
+      "active_edges": 25,
+      "proof_bytes": 8096,
+      "public_inputs": {
+        "commitment": "01fde914c4cf06ae6b95f8955c923dd5d7f4d65f787ca14c4b5dbb86ca86ae3a",
+        "policy_id": 7,
+        "session_id": 20261126,
+        "nonce": 12602,
+        "collector_id": 1205390390791845139
+      },
+      "witness_generation_ms": 5,
+      "params_generation_ms": 8164,
+      "vk_generation_ms": 2257,
+      "pk_generation_ms": 3141,
+      "create_proof_ms": 7095,
+      "keygen_reused_from_setup": false,
+      "prove_wall_ms": 20735,
+      "prove_peak_mb": 2258.23,
+      "prove_exit_code": 0,
+      "params_generation_verify_ms": 10317,
+      "collector_allowlist_lookup_ms": 0,
+      "signature_verification_ms": 0,
+      "vk_rebuild_ms": 2285,
+      "verify_proof_ms": 55,
+      "verify_wall_ms": 12761,
+      "verify_peak_mb": 150.52,
+      "verify_exit_code": 0,
+      "wrong_nonce_rejected": true,
+      "accepted": true
+    },
+    {
+      "density": "mid",
+      "active_edges": 50,
+      "proof_bytes": 8096,
+      "public_inputs": {
+        "commitment": "2187341ac06c5d86ec18bb2149940ba117af7f2e9b0af11529ad73b49bfc7cc7",
+        "policy_id": 7,
+        "session_id": 20261126,
+        "nonce": 12603,
+        "collector_id": 1205390390791845139
+      },
+      "witness_generation_ms": 12,
+      "params_generation_ms": 10811,
+      "vk_generation_ms": 2191,
+      "pk_generation_ms": 3180,
+      "create_proof_ms": 7024,
+      "keygen_reused_from_setup": false,
+      "prove_wall_ms": 23311,
+      "prove_peak_mb": 2259.82,
+      "prove_exit_code": 0,
+      "params_generation_verify_ms": 10862,
+      "collector_allowlist_lookup_ms": 0,
+      "signature_verification_ms": 0,
+      "vk_rebuild_ms": 2216,
+      "verify_proof_ms": 49,
+      "verify_wall_ms": 13226,
+      "verify_peak_mb": 150.52,
+      "verify_exit_code": 0,
+      "wrong_nonce_rejected": true,
+      "accepted": true
+    },
+    {
+      "density": "high",
+      "active_edges": 100,
+      "proof_bytes": 8096,
+      "public_inputs": {
+        "commitment": "20b466b07241a85fac461a77a7c043ab97fbd48519b31aea58b239d352d4b050",
+        "policy_id": 7,
+        "session_id": 20261126,
+        "nonce": 12604,
+        "collector_id": 1205390390791845139
+      },
+      "witness_generation_ms": 15,
+      "params_generation_ms": 12020,
+      "vk_generation_ms": 2097,
+      "pk_generation_ms": 3093,
+      "create_proof_ms": 7335,
+      "keygen_reused_from_setup": false,
+      "prove_wall_ms": 24638,
+      "prove_peak_mb": 2259.04,
+      "prove_exit_code": 0,
+      "params_generation_verify_ms": 11024,
+      "collector_allowlist_lookup_ms": 0,
+      "signature_verification_ms": 0,
+      "vk_rebuild_ms": 2210,
+      "verify_proof_ms": 48,
+      "verify_wall_ms": 13386,
+      "verify_peak_mb": 150.83,
+      "verify_exit_code": 0,
+      "wrong_nonce_rejected": true,
+      "accepted": true
+    }
+  ],
+  "proof_negatives": [
+    {
+      "case": "illegal_ifc",
+      "create_proof_ok": true,
+      "proof_bytes": 8096,
+      "create_proof_exit_code": 0,
+      "verify_accepted": false,
+      "reason": "verify_proof rejected"
+    },
+    {
+      "case": "node_tl_mismatch",
+      "create_proof_ok": true,
+      "proof_bytes": 8096,
+      "create_proof_exit_code": 0,
+      "verify_accepted": false,
+      "reason": "verify_proof rejected"
+    },
+    {
+      "case": "edge_idx_mismatch",
+      "create_proof_ok": true,
+      "proof_bytes": 8096,
+      "create_proof_exit_code": 0,
+      "verify_accepted": false,
+      "reason": "verify_proof rejected"
+    },
+    {
+      "case": "crossbar_prev_dst",
+      "create_proof_ok": true,
+      "proof_bytes": 8096,
+      "create_proof_exit_code": 0,
+      "verify_accepted": false,
+      "reason": "verify_proof rejected"
+    }
+  ],
+  "collector_cases": [
+    {
+      "case": "legit_allowlist_collector",
+      "accepted": true,
+      "reason": null,
+      "layer": "all"
+    },
+    {
+      "case": "forged_public_key",
+      "accepted": false,
+      "reason": "collector signature rejected",
+      "layer": "allowlist+Ed25519 (claimed key ignored)"
+    },
+    {
+      "case": "wrong_collector_id",
+      "accepted": false,
+      "reason": "collector_id not in trusted allowlist",
+      "layer": "allowlist"
+    },
+    {
+      "case": "wrong_nonce",
+      "accepted": false,
+      "reason": "verify_proof rejected",
+      "layer": "SNARK public input (Ed25519 re-signed)"
+    },
+    {
+      "case": "wrong_signature",
+      "accepted": false,
+      "reason": "collector signature rejected",
+      "layer": "Ed25519 signature"
+    }
+  ]
+}

@@ -11,6 +11,7 @@
 | Phase 1B（基线 `a5acdc5`） | 证明/验证通过、50/100/200 实测、未冒充安全证明 | **重新界定为 PASS（仅本地具体图证明/验证）** | `experiments/phase1b/` 保留未改；原“独立第三方验证”表述撤销 |
 | Phase 1B.1 | 固定电路、图无关 VK、独立验证者、盲化承诺、计时分离 | **PASS（仅固定形状/接口；soundness 已被 1B.1.2 收窄，见第 7 节）** | `experiments/phase1b1/RESULTS.md` + `selftest*.json` |
 | Phase 1B.1.2 | 承诺 preimage 与谓词字段的电路绑定、crossbar 初始累加器、采集器身份、盲化接口 | **PASS（仅当前 cap=50 工程实现；研究状态不变）** | `experiments/phase1b1_2/RESULTS.md` + `ATTACK_CASES.md` |
+| Phase 1B.1.3 | 独立复现、计时边界校正、VK digest 定位、隐私与安全边界整理 | **PASS（仅证据可信度复核；不做研究 GO 判定）** | `experiments/phase1b1_3/RESULTS.md` + `REPRODUCTION_LOG.md` + `VK_DIGEST_AUDIT.md` |
 
 ### 为什么重新界定 Phase 1B
 基线静态审查发现四个优先于创新性的问题，均已在 1B.1 处理或显式记录：
@@ -109,3 +110,30 @@
 - 修复前攻击复现表明 1B.1 的核心 soundness 命题不成立；修复后反例被拒不等价于形式化安全证明。
 - `prove` 仍重新调用 `keygen_with_k()`；setup 时间不是可复用缓存。`pure_verify_ms` 不是端到端验证时间。
 - 只跑 cap=50；不作为规模可扩展性证据。
+
+## 8. Phase 1B.1.3 独立复核（2026-11-27）
+
+对 1B.1.2 做有限范围独立复核，不改电路、不扩规模、不做 GO 判定。
+
+### R1–R10 逐条判定
+
+| # | 标准 | 判定 | 证据 |
+| --- | --- | --- | --- |
+| R1 | Python 全量测试独立复现 | **PASS（以 pytest 为准）** | `raw/pytest.log`：15 passed、exit 0；`unittest discover` 发现 0 例（exit 5，测试非 TestCase 子类），据实记录不改写 |
+| R2 | cap=50 三正向真实证明验证通过 | **PASS** | `raw/cap50_{low,mid,high}.json`：`accepted=true`，exit 0 |
+| R3 | 四类负向真实证明层拒绝 | **PASS** | `raw/proof_layer_negatives.json`：四例真实生成 proof 后 `verify_proof rejected` |
+| R4 | 采集器身份/签名负向复现 | **PASS** | `raw/collector_cases.json`：legit=true；四类伪造落在 allowlist/Ed25519/SNARK public input 分层拒绝 |
+| R5 | Params/VK/PK 计时边界正确 | **PASS** | `raw/setup50.json`：5647+1399+2729≈setup_inner 9776；`keygen_vk_attempts=1`，probe Params 已删除 |
+| R6 | 纯操作与 wall time 分离 | **PASS** | `raw/cap50_*.json` 分列 witness/params/vk/pk/create_proof 与 params_verify/rebuild/sig/allow/verify_proof + 各自 wall；可逐项对账 |
+| R7 | VK digest 稳定性与限制有证据 | **PASS** | `raw/vk_digest_stability.json` 三次 setup digest 相同；标记为 pinned-build prototype digest，跨版本稳定性未建立 |
+| R8 | seed/blind/meta/public 可重建性与泄露边界 | **PASS（核查完成）** | `COMMITMENT_AND_PROVENANCE.md` §9 四分法；public 无 blind/图规模元数据 |
+| R9 | 三命题严格区分 | **PASS** | `SECURITY_MODEL.md` §7：Graph compliance / Trace completeness / Runtime enforcement 不互相推广 |
+| R10 | 全部原始日志与数据保留 | **PASS** | `raw/` 25 个 `*.log` + 全部 proof/public/meta/verify；历史阶段未改 |
+
+### 诚实边界（复核后）
+
+- R1 的 `unittest discover` 结果是"0 tests"，不是"通过"；Python 全测依据 pytest 15 passed。
+- 计时数值与 1B.1.2 报告不同：旧口径把第二次 Params 计入 `vk_gen_ms`；本阶段修正，但两次数值都保留在各自阶段，未覆盖。prove 仍不复用 setup 的 keygen；`verify_proof_ms` 不是端到端验证时间。
+- VK digest 只在同一构建内稳定；`vk_hash` 用版本字符串长度，非可靠版本指纹。
+- 随机 blind 是"接口按预期工作"，不等于已证明 commitment hiding；公开合成数据不等于真实会话隐私实验。
+- **裁决 CONDITIONAL HOLD 不变**：本阶段只提升工程证据可信度，不构成 GO、论文创新或形式化安全证明。按任务包建议冻结工程原型，等待集中审阅。

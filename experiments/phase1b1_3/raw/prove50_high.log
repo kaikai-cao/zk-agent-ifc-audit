@@ -1,0 +1,7 @@
+command: D:\Research\zk-agent-ifc-audit\halo2\target\release\zk-agent-ifc-audit-halo2.exe prove 50 high 2026112603 D:\Research\zk-agent-ifc-audit\experiments\phase1b1_3\raw\setup50.json D:\Research\zk-agent-ifc-audit\experiments\phase1b1_3\raw\cap50_high.proof D:\Research\zk-agent-ifc-audit\experiments\phase1b1_3\raw\cap50_high.public.json D:\Research\zk-agent-ifc-audit\experiments\phase1b1_3\raw\cap50_high.meta.json
+exit_code: 0
+wall_ms: 24638
+peak_mb: 2259.04
+--- stdout ---
+{"cap":50,"circuit_version":"phase1b1-2-soundness-v1","collector_id":1205390390791845139,"collector_signature":"488acb158687da2e625e296d76ae367042c712324ed0f47b207bb46be199b43965ec25b1aa3448850166db13c1ed64c5aa657d5b8b67b0f75cf2755d40bf170e","commitment":"20b466b07241a85fac461a77a7c043ab97fbd48519b31aea58b239d352d4b050","create_proof_ms":7335,"k":15,"keygen_reused_from_setup":false,"nonce":12604,"note":"prove regenerates Params/VK/PK each call; create_proof_ms is pure create_proof only. prove_wall_ms/prove_peak_mb are measured by the harness around this process.","params_generation_ms":12020,"pk_generation_ms":3093,"policy_id":7,"proof_bytes":8096,"schema":"ifc-fixed-v1","session_id":20261126,"vk_generation_ms":2097,"witness_generation_ms":15}
+--- stderr ---

@@ -1,0 +1,7 @@
+command: D:\Research\zk-agent-ifc-audit\halo2\target\release\zk-agent-ifc-audit-halo2.exe prove-attack 50 crossbar_prev_dst D:\Research\zk-agent-ifc-audit\experiments\phase1b1_3\raw\setup50.json D:\Research\zk-agent-ifc-audit\experiments\phase1b1_3\raw\neg_crossbar_prev_dst.proof D:\Research\zk-agent-ifc-audit\experiments\phase1b1_3\raw\neg_crossbar_prev_dst.public.json
+exit_code: 0
+wall_ms: 17969
+peak_mb: 2261.57
+--- stdout ---
+{"case":"crossbar_prev_dst","create_proof_ok":true,"proof_bytes":8096}
+--- stderr ---

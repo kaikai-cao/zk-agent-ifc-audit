@@ -1,0 +1,14 @@
+{
+  "accepted": false,
+  "cap": 50,
+  "collector_allowlist_lookup_ms": 0,
+  "collector_key_source": "independent_allowlist",
+  "k": 15,
+  "note": "verify_proof_ms=verify_proof only. params_generation_ms, vk_rebuild_ms, collector_allowlist_lookup_ms, signature_verification_ms are reported separately. verify_wall_ms/verify_peak_mb are measured by the harness around this process.",
+  "reason": "collector signature rejected",
+  "schema": "ifc-fixed-v1",
+  "sig_verify_ms": 0,
+  "signature_verification_ms": 0,
+  "verifier_called_keygen_vk_on_witness": false,
+  "verifier_read_graph": false
+}

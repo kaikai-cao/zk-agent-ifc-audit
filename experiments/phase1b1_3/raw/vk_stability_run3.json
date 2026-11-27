@@ -1,0 +1,15 @@
+{
+  "cap": 50,
+  "circuit_version": "phase1b1-2-soundness-v1",
+  "edge_cap": 100,
+  "k": 15,
+  "keygen_vk_attempts": 1,
+  "note": "params_gen_ms=Params::new only; vk_gen_ms=keygen_vk only; pk_gen_ms=keygen_pk only. halo2_proofs 0.4 exposes no VK serialization API; verifier rebuilds the graph-independent fixed-template VK and pins it via vk_hash (pinned-build prototype digest).",
+  "params_gen_ms": 10882,
+  "pk_gen_ms": 3337,
+  "schema": "ifc-fixed-v1",
+  "setup_inner_ms": 16413,
+  "vk_digest": "09a7d83d3a397ec5cece1afb4729738b7f419a8cb995959dcea597a8375afa9f",
+  "vk_gen_ms": 2193,
+  "vk_hash": "3d84086f4e912727139afb9011d32431411c96c9c500b45f2bf7abc7b75a79b8"
+}

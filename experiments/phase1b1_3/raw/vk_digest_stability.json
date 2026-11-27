@@ -1,0 +1,37 @@
+{
+  "schema": "ifc-fixed-v1",
+  "cap": 50,
+  "runs": [
+    {
+      "vk_digest": "09a7d83d3a397ec5cece1afb4729738b7f419a8cb995959dcea597a8375afa9f",
+      "vk_hash": "3d84086f4e912727139afb9011d32431411c96c9c500b45f2bf7abc7b75a79b8",
+      "k": 15,
+      "circuit_version": "phase1b1-2-soundness-v1",
+      "params_gen_ms": 10586,
+      "vk_gen_ms": 2292,
+      "exit_code": 0
+    },
+    {
+      "vk_digest": "09a7d83d3a397ec5cece1afb4729738b7f419a8cb995959dcea597a8375afa9f",
+      "vk_hash": "3d84086f4e912727139afb9011d32431411c96c9c500b45f2bf7abc7b75a79b8",
+      "k": 15,
+      "circuit_version": "phase1b1-2-soundness-v1",
+      "params_gen_ms": 11071,
+      "vk_gen_ms": 2157,
+      "exit_code": 0
+    },
+    {
+      "vk_digest": "09a7d83d3a397ec5cece1afb4729738b7f419a8cb995959dcea597a8375afa9f",
+      "vk_hash": "3d84086f4e912727139afb9011d32431411c96c9c500b45f2bf7abc7b75a79b8",
+      "k": 15,
+      "circuit_version": "phase1b1-2-soundness-v1",
+      "params_gen_ms": 10882,
+      "vk_gen_ms": 2193,
+      "exit_code": 0
+    }
+  ],
+  "vk_digest_stable_within_build": true,
+  "vk_hash_stable_within_build": true,
+  "distinct_digests": 1,
+  "note": "vk_digest = SHA256 of format!(\"{:?}\", vk.pinned()). This is a pinned-build prototype digest: format Debug is not a canonical/cross-version serialization. Stability shown here is within one binary + dependency set only; cross-compiler and cross-dependency-version compatibility is NOT established."
+}

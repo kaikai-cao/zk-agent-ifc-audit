@@ -1,0 +1,12 @@
+{
+  "blind_changes_commitment": true,
+  "cap": 50,
+  "collector_id_rule_stable": true,
+  "compliant_graph_satisfied": true,
+  "invalid_graph_rejected": true,
+  "mockprover_skipped": false,
+  "schema": "ifc-fixed-v1",
+  "vk_graph_independent": true,
+  "without_witnesses_keeps_cap": true,
+  "wrong_signature_rejected": true
+}

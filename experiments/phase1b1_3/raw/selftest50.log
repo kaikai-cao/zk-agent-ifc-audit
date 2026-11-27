@@ -1,0 +1,7 @@
+command: D:\Research\zk-agent-ifc-audit\halo2\target\release\zk-agent-ifc-audit-halo2.exe selftest 50
+exit_code: 0
+wall_ms: 13087
+peak_mb: 306.52
+--- stdout ---
+{"blind_changes_commitment":true,"cap":50,"collector_id_rule_stable":true,"compliant_graph_satisfied":true,"invalid_graph_rejected":true,"mockprover_skipped":false,"schema":"ifc-fixed-v1","vk_graph_independent":true,"without_witnesses_keeps_cap":true,"wrong_signature_rejected":true}
+--- stderr ---

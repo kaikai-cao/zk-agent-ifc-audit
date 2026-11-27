@@ -1,0 +1,31 @@
+{
+  "density": "mid",
+  "active_edges": 50,
+  "proof_bytes": 8096,
+  "public_inputs": {
+    "commitment": "2187341ac06c5d86ec18bb2149940ba117af7f2e9b0af11529ad73b49bfc7cc7",
+    "policy_id": 7,
+    "session_id": 20261126,
+    "nonce": 12603,
+    "collector_id": 1205390390791845139
+  },
+  "witness_generation_ms": 12,
+  "params_generation_ms": 10811,
+  "vk_generation_ms": 2191,
+  "pk_generation_ms": 3180,
+  "create_proof_ms": 7024,
+  "keygen_reused_from_setup": false,
+  "prove_wall_ms": 23311,
+  "prove_peak_mb": 2259.82,
+  "prove_exit_code": 0,
+  "params_generation_verify_ms": 10862,
+  "collector_allowlist_lookup_ms": 0,
+  "signature_verification_ms": 0,
+  "vk_rebuild_ms": 2216,
+  "verify_proof_ms": 49,
+  "verify_wall_ms": 13226,
+  "verify_peak_mb": 150.52,
+  "verify_exit_code": 0,
+  "wrong_nonce_rejected": true,
+  "accepted": true
+}

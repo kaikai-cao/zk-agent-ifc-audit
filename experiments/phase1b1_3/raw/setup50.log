@@ -1,0 +1,7 @@
+command: D:\Research\zk-agent-ifc-audit\halo2\target\release\zk-agent-ifc-audit-halo2.exe setup 50 D:\Research\zk-agent-ifc-audit\experiments\phase1b1_3\raw\setup50.json
+exit_code: 0
+wall_ms: 9894
+peak_mb: 789.93
+--- stdout ---
+{"cap":50,"circuit_version":"phase1b1-2-soundness-v1","edge_cap":100,"k":15,"keygen_vk_attempts":1,"note":"params_gen_ms=Params::new only; vk_gen_ms=keygen_vk only; pk_gen_ms=keygen_pk only. halo2_proofs 0.4 exposes no VK serialization API; verifier rebuilds the graph-independent fixed-template VK and pins it via vk_hash (pinned-build prototype digest).","params_gen_ms":5647,"pk_gen_ms":2729,"schema":"ifc-fixed-v1","setup_inner_ms":9776,"vk_digest":"09a7d83d3a397ec5cece1afb4729738b7f419a8cb995959dcea597a8375afa9f","vk_gen_ms":1399,"vk_hash":"3d84086f4e912727139afb9011d32431411c96c9c500b45f2bf7abc7b75a79b8"}
+--- stderr ---

@@ -1,0 +1,14 @@
+python: Python 3.13.14
+pytest: 9.2.0
+command: python -m pytest -q tests
+============================= test session starts =============================
+platform win32 -- Python 3.13.14, pytest-9.2.0, pluggy-1.7.0
+rootdir: D:\Research\zk-agent-ifc-audit\tests
+collected 15 items
+
+..\..\..\Research\zk-agent-ifc-audit\tests\test_phase1a.py ............. [ 86%]
+                                                                         [ 86%]
+..\..\..\Research\zk-agent-ifc-audit\tests\test_phase1b1_2.py ..         [100%]
+
+============================= 15 passed in 0.61s ==============================
+EXIT_CODE=0

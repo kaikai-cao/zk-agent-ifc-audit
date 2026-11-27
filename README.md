@@ -15,6 +15,7 @@ Zero-Knowledge Auditing of Information-Flow Compliance in LLM Agent Sessions.
 | Phase 1B（基线 `a5acdc5`） | Halo2 固定规模原型（50/100/200 事件）与实测 | 完成；已被 Phase 1B.1 审查出固定电路/独立验证/承诺隐藏/计时口径问题 |
 | Phase 1B.1（分支 `phase1b1-fixed-verifier`） | 固定电路、图无关 VK、独立验证者、盲化承诺、计时分离 | soundness 已被 1B.1.2 收窄重测；原始结果保留 |
 | Phase 1B.1.2（分支 `phase1b1-2-soundness`） | 承诺 preimage 与谓词字段绑定、crossbar 首行零约束、采集器 allowlist、OS CSPRNG blind | cap=50 工程实现 PASS；研究状态仍 CONDITIONAL HOLD |
+| Phase 1B.1.3（分支 `phase1b1-3-evidence-closure`） | 独立复现、计时边界校正、VK digest 定位、隐私/安全边界整理 | cap=50 证据可信度 PASS；不做 GO 判定，HOLD 不变 |
 | 基线 | Plaintext checker / Commitment+signature / Halo2 ZK | 完成（见 `experiments/baselines/`） |
 
 **裁决：CONDITIONAL HOLD** —— 工程协议修复后技术可行性 PASS，但研究/项目 GO 仍未成立，暂停 Halo2 扩展。详见 `docs/DECISION_GATE.md`。本仓库是一个研究假设检验，不预设项目一定值得继续。
@@ -30,6 +31,7 @@ Phase 1B.1 明确不宣称：独立密码学创新、形式化安全证明、采
 - `experiments/phase1b/`：Phase 1B 基线实测（保留，不覆盖）。
 - `experiments/phase1b1/`：固定电路与独立验证者实测、setup/proof/public/verify 产物。
 - `experiments/phase1b1_2/`：soundness 修复前后攻击用例、cap=50 正向/负向实测与性能口径。
+- `experiments/phase1b1_3/`：独立复核日志、修正后计时、VK digest 审计与隐私/安全边界（R1–R10）。
 - `config/trusted_collectors.test.json`：仅用于测试的独立采集器 allowlist。
 - `experiments/baselines/`：三类基线的对照脚本与结果。
 - `scripts/`：一键复现入口。
@@ -62,6 +64,10 @@ python scripts/run_phase1b1_2.py
   experiments/phase1b1_2/raw/cap50_low.proof \
   experiments/phase1b1_2/raw/cap50_low.public.json \
   experiments/phase1b1_2/raw/cap50_low.verify.json
+
+# Phase 1B.1.3（独立复核；只跑 cap=50，输出到独立目录不覆盖历史）
+PYTHONPATH=scripts python scripts/run_phase1b1_3.py
+PYTHONPATH=scripts python scripts/vk_digest_stability.py
 ```
 
 Phase 1B 使用 `halo2_proofs = 0.4.0`、`halo2_gadgets = 0.6.0`、`halo2_poseidon = 0.2.0`、`pasta_curves = 0.6.0`（Pallas base field，Poseidon P128Pow5T3, width 3/rate 2）。不引入递归证明；不把 LLM 推理放进电路。
