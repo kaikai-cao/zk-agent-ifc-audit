@@ -2,6 +2,7 @@
 
 基线：`ed60e0430ddd8da5d5862fa55aa73204193806f2`（`phase1d1-soundness-errata`）
 本轮新增：`phase1d2/` 八份文档
+**Phase 1D.2.1 Errata 基线**：`131d824ed0befc244de86b9a25732793da04fa4c`（`phase1d2-trace-equivalence-certificates`）；仅修正 §4.1 所列表述，**STOP 裁决冻结不变**。
 证据标记：`[定义]`、`[数学推导]`、`[原文核验]`、`[标准结论]`、`[待验证]`。
 
 ---
@@ -58,6 +59,23 @@
 
 - **L1**：`phase1d/INDUCTIVE_CERTIFICATE.md` §3.4 STEP 正式块补入 `I_{k+1}(s₀,s₁) ∧` 前提并限定 `k∈[0,T-1]`；`SOUNDNESS_PROOF.md` 引理 2/3 与 §4 汇总经核对**一致**，定理 1 不变（`PROPERTY_REFINEMENT.md` §2）。
 - **状态对照**：旧 `DECISION.md`/`COMPLEXITY_COMPARISON.md` 的"紧凑+完备不可兼得"普遍断言维持撤回；"I_k 充分非必要""ZK 价值未建立"仍成立；"是否存在更紧凑近完备证书"本轮回答为"自动机/语言证书近完备但无 ZK 增益"（`PROPERTY_REFINEMENT.md` §3）。
+
+---
+
+## 4.1 Phase 1D.2.1 — Bounded Automata Errata（定义修正与冻结声明）
+
+远端核查发现一处**实质定义漏洞**：原 `TRACE_AUTOMATA_CERTIFICATE.md` §1 的观察轨迹 NFA 未把上界 `T` 纳入自动机结构，却声称 `L(A)=L_T`；而 `PROPERTY_REFINEMENT.md` §1 的 `L_T` 已含 `|w|≤T`，故该等号在原定义下不成立。1D.2.1 只做范围内的定义收紧，不重开研究、不改裁决：
+
+| 修正 | 内容 | 落地 |
+| --- | --- | --- |
+| **E1 分层 NFA** | `Q_T=S×{0,…,T}⊎{q_acc}`；`τ` 边计数不变、`ℓ∈Λ` 边仅 `i<T` 时 `i→i+1`、`⊢t` 仅从 `i≤T` 发出；给出 `L(A_T)=L_T` 的**双向包含证明**（含计数不变量） | `TRACE_AUTOMATA_CERTIFICATE.md` §1 |
+| **E2 规模更新** | NFA `O(\|S\|(T+1))`；DFA 确定化上界由 `2^{\|S\|}` 改为 `2^{\|S\|(T+1)}` | `TRACE_AUTOMATA_CERTIFICATE.md` §2/§5；`COMPARISON_MATRIX.md` §1/§2.2 |
+| **E3 DFA 电路成本标估算** | 电路中证"不存在到不一致状态的路径"需**可达集上界不变式（闭包）证书**而非仅"路径约束"；成本记为 `[待验证]` 估算 | `TRACE_AUTOMATA_CERTIFICATE.md` §6；`COMPARISON_MATRIX.md` §2.2/§3.1；`ZK_VALUE_ANALYSIS.md` §5 |
+| **E4 PSPACE 推论收紧** | NFA 等价 PSPACE-complete **不推出**"无多项式大小可多项式验证正向证书"；若存在则 `PSPACE=NP`，属依赖复杂度类分离假设的推论，非已证下界 | `TRACE_AUTOMATA_CERTIFICATE.md` §3；`COMPARISON_MATRIX.md` §3.1 |
+
+**冻结声明**（`[数学推导]`）：以上修正只使自动机证书的定义与其目标命题 `L_T` 严格对齐，并收紧复杂度与电路成本的表述；**不改变**三证书的内核判定、ZK 价值判断与成本三分结论。因此 **STOP 裁决原样保留**（见 §1、§3）。不启动 Phase 1D.3、不改 Halo2、不新增文献搜索。修正后本支线（Phase 1C → 1D → 1D.1 → 1D.2 → 1D.2.1）**冻结**，不再寻找第四种证书变体。
+
+**STOP 的准确范围**：停止的是"以有限 LTS、弱互模拟、轨迹自动机语言等价为核心的 IFC-ZK 证书对象"路线；不停止 Agent 安全与密码学信任机制本身，也不排除未来出现真实硬隐私需求时重新评估（重开条件见 §6）。特别地，STOP **不是**"已证明所有紧凑且完备的 ZK 证书不存在"，而是"当前三个候选均未建立 ZK 不可替代价值"。
 
 ---
 
