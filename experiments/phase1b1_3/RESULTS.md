@@ -79,7 +79,7 @@
 ## 6. 隐私与元数据泄露结论
 
 - 合成图可由公开 seed + 公开代码重建（`SEEDS`/`make_compliant_witness`）；blind 由 OS CSPRNG 在证明进程内采样，不经 seed，不写入 public.json / 日志。
-- public.json 仅含 commitment、policy_id、session_id、nonce、collector_id、signature、k、proof_bytes 等；density/active_edges 只在私有 meta.json（本阶段 meta 留在 raw 供复核，正式部署应不入公开渠道）。
+- public.json 仅含 commitment、policy_id、session_id、nonce、collector_id、signature、k、proof_bytes 等；density/active_edges 不属于 SNARK public inputs，只写入 benchmark 辅助文件 `meta.json`。**这些 `meta.json` 已随本阶段证据提交到公开 Git 仓库**（`experiments/phase1b1_3/raw/cap50_{low,mid,high}.meta.json`），其中数据由公开 seed 生成的合成实验输入产生，不代表真实会话秘密泄露；真实部署时不应把真实会话私有元数据以这种方式公开存储。
 - 仍公开并可能泄漏的元数据：cap/k、策略 ID、会话 ID、nonce、采集器 ID、proof 大小与计时，以及"存在一次合规判定"这一事实。
 - 随机 blind + Poseidon 只说明随机化接口按预期工作；**不声称已形式化证明 commitment hiding**，不把公开合成数据实验说成真实 Agent 会话隐私实验。
 

@@ -80,7 +80,7 @@ ZKP 不证明工具调用真实发生、调用参数未被篡改、结果未被�
 
 - 恶意证明者必须让同一组受约束字段同时满足闭包谓词与 Merkle/Poseidon 承诺编码；cap=50 的五类恶意 witness 与四类真实负向证明均被拒。
 - verifier 不读取 `public.json` 自称的采集器公钥，而从独立 allowlist 取公钥；`collector_id` 由公钥按固定 SHA-256 前缀规则重新计算。测试 allowlist 中的确定性密钥仅为公开 fixture。
-- blind 由 OS CSPRNG 在证明进程内采样，不经过 CLI seed，也不写入 `public.json`；`density`/`active_edges` 仅进入 benchmark 私有 meta 文件。
+- blind 由 OS CSPRNG 在证明进程内采样（32 字节输出清最高两位，254-bit 采样空间），不经过 CLI seed，也不写入 `public.json`；`density`/`active_edges` 不属于 SNARK public inputs，只写入 benchmark 辅助 `meta.json`，但该文件已随证据提交到公开 Git 仓库（合成数据，非真实会话秘密）。
 
 仍未解决：采集器是否漏记/错标、策略版本是否权威、运行时事件是否真实发生、nonce 是否由协议层唯一消费。零知识性与盲化承诺也不隐藏 `cap`、策略 ID、会话 ID、nonce、采集器 ID 以及“存在一次合规证明”这一事实；本阶段不声称承诺的统计隐藏性形式化证明。
 

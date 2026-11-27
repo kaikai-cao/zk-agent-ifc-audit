@@ -26,7 +26,7 @@
 | `VK_DIGEST_AUDIT.md` | C1 五问、C2 处理、稳定性实测 |
 | `REPRODUCTION_LOG.md` | 完整复现命令、环境版本、每个进程的退出码与原始日志索引 |
 | `ATTACK_CASES.md`（在 1B.1.2 目录） | 修复前后恶意 witness 差异（本阶段不重做，只引用） |
-| `raw/` | 全部原始证据：`*.log`（完整 stdout/stderr/退出码）、`*.json`（结构化结果） |
+| `raw/` | 全部原始证据：`*.log`（完整 stdout/stderr/退出码）、`*.json`（结构化结果）。其中 `cap50_*.meta.json` 为 benchmark 辅助文件（含 density/active_edges），已随证据提交公开仓库，但不属于 SNARK public inputs；数据来自公开 seed 合成输入，非真实会话秘密 |
 
 ## 不覆盖历史
 

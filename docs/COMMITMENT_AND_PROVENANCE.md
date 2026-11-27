@@ -75,7 +75,7 @@ attestation = (C, policy_id, session_id, nonce, collector_id)
 | 修改公开 `root_G` 但复用 π | Verify 失败（公开输入绑定） |
 | 修改 nonce/session 复用 π | Verify 失败 |
 | 用另一个图产生相同 `C` | 需同时命中 `root_G` 与 `blind`，或 Poseidon 碰撞/第二原像 |
-| 枚举候选图并比对公开根 | 被盲化阻断：公开的是 `C` 而非 `root_G`，每个候选还需猜中 255-bit `blind` |
+| 枚举候选图并比对公开根 | 被盲化阻断：公开的是 `C` 而非 `root_G`，每个候选还需猜中 254-bit 采样范围内的 `blind` |
 | 跨会话关联同一张图 | 每次采样新 `blind` 即得到不同 `C`；若复用 `blind` 则关联风险回归 |
 | 从 π 恢复边结构/标签 | SNARK zero-knowledge（协议层声明，本原型未做统计隐藏性测试）；与承诺隐藏性是不同保证 |
 | 伪造采集器签名 | 需 Ed25519 私钥；原型测试用错误签名拒绝 |
@@ -110,7 +110,7 @@ collector_id = big_endian_u64(SHA256(raw_ed25519_public_key)[0..8]) & (2^63 - 1)
 
 Rust 与 Python 使用同一规则。验证者从 `config/trusted_collectors.test.json`（仅测试信任根）按 `collector_id` 查找公钥，重新派生 ID 后验签；`public.json` 中任何自称公钥字段均被忽略。正式部署必须替换该 allowlist。
 
-盲化方面，正式证明路径由操作系统 CSPRNG 采样 254-bit blind，不再从 CLI seed 派生。`public.json` 和 `GraphEncoding.as_dict()` 均不输出 blind；`density` 与 `active_edges` 只进入 benchmark 私有 `meta.json`，不属于证明 public inputs。这里只说明随机化接口按预期工作，不声称已形式化证明统计隐藏性。
+盲化方面，正式证明路径由操作系统 CSPRNG 采样 blind：取 32 字节随机输出并清除最高两位（`bytes[31] &= 0x3f`），使其落入当前 Pallas base field 的规范表示范围，采样空间为 254-bit；不再从 CLI seed 派生。`public.json` 和 `GraphEncoding.as_dict()` 均不输出 blind。`density` 与 `active_edges` 不属于证明 public inputs，只写入 benchmark 辅助文件 `meta.json`，但该文件已随本阶段证据提交到公开 Git 仓库（见 §9 第 5 问）。这里只说明随机化接口按预期工作，254-bit 采样空间不等于已证明的密码学安全级别，也不声称已形式化证明 commitment hiding。
 
 ## 9. 可重建性与隐私边界（Phase 1B.1.3 / D）
 
@@ -119,11 +119,11 @@ Rust 与 Python 使用同一规则。验证者从 `config/trusted_collectors.tes
 1. **公开 seed 足以重建实验图**：是。benchmark 用 `SEEDS={low:2026112601, mid:…02, high:…03}` + `make_compliant_witness(density, seed)` 生成合成图；公开代码 + 公开 seed 可重建相同图。
 2. **公开代码可重建实验输入**：是，除 blind 外。图结构、节点/边、policy/session/nonce 均由 seed 与代码确定。
 3. **blind 真正由 OS CSPRNG 产生**：是。prove 进程内 `random_blind()` 用 `SysRng.try_fill_bytes`（rand 0.10 系统随机源），清高两位保证域内；不经 CLI seed。
-4. **blind 写入 public/日志**：否。`public.json` 无 blind 字段；`verify` 日志与 proof public inputs 都不含 blind。private meta 只记 density/active_edges。
-5. **private meta 进入 Git**：否。`meta.json` 只落在实验 raw 目录，不作为证明输入；正式部署应确保私有元数据不进公开渠道。
+4. **blind 写入 public/日志**：否。`public.json`、proof public inputs 与 `verify` 日志都不含 blind；benchmark 辅助 `meta.json` 也只记 density/active_edges，不含 blind。
+5. **meta.json 是否进入公开 Git**：**是**。`experiments/phase1b1_3/raw/cap50_{low,mid,high}.meta.json` 已作为 benchmark 辅助文件提交到公开仓库，其中含 `density` 与 `active_edges`。它们**不属于** SNARK public inputs，与证明实例严格分离。这些数据来自公开 seed 生成的合成实验输入，**不代表真实会话秘密泄露**。真实部署时，不应将真实会话的私有元数据以这种方式公开存储。
 6. **commitment 是否公开**：是。`C = H(BLIND+cap, root_G, blind)` 作为 proof public input 第 0 项公开；`root_G` 与 blind 不公开。
 7. **公开字段泄露的元数据**：`cap/k`、电路版本、policy_id、session_id、nonce、collector_id、proof 大小、计时，以及"存在一次合规判定"这一事实。盲化不隐藏这些。
-8. **字段采样安全性**：blind 为 254-bit 域元素（清 2 位后约 252 bit 熵），单次采样；此处只描述实现，不把"采样足够"等同于"已证明 hiding"。
+8. **blind 采样空间**：blind 从 OS CSPRNG 获取 32 字节随机输出，并清除最高两位（`bytes[31] &= 0x3f`），以保证其落入当前 Pallas base field 的规范表示范围；该采样空间为 254-bit。随机性依赖 OS CSPRNG；本实现尚未给出 commitment hiding 的形式化证明，不把采样空间大小包装成完整密码学安全级别。
 
 ### 四分法（禁止 A→D 越级）
 
